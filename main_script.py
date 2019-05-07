@@ -99,11 +99,10 @@ def train_phase(ψ: torch.nn.Module, samples_train, target_train, config, sample
 
 #################### parameters setting here ###########################
 n_trials = 10 # how many times we run learning process from the beginning
-parameters_set = [] # set possible values of J2 or any other tunable frustration parameter
-hamiltonians = []
+parameters_set = [0.0] # set possible values of J2 or any other tunable frustration parameter
 exact_ground_states_signs = []
 
-log_file = open('J1J2_log.dat', 'w') # specify logfile 
+log_file = open('./logs/J1J2_log.dat', 'w') # specify logfile 
 
 # other options
 number_spins = 25
@@ -112,14 +111,11 @@ samples = all_spins(number_spins, magnetization)
 
 
 for parameter in parameters_set:
-	hamiltonian_path_name = "./hamiltonians/" + str(parameter) + '.hamiltonian' # specify how the name is obtained
-	hamiltonians.append(read_hamiltonian(hamiltonian_path_name).to_cxx())
-
-	exact_gs_vector_name = "./vectors/" + str(parameter) + '.vector' # specify how the vector name is obtained
+	exact_gs_vector_name = "./vectors_J1J2/j1j2_" + str(parameter) + '.vector' # specify how the vector name is obtained
 	exact_ground_states_signs.append(load_ground_state(samples, exact_gs_vector_name))
 
 
-PhaseNet = import_network("../../nqs-playground/nqs_playground/extra_files/phase.py") # explicit path to model.py file
+PhaseNet = import_network("../models/J1J2_model.py") # explicit path to model.py file
 optimiser = lambda p: torch.optim.Adam(p.parameters(), lr=0.003)
 epochs = 100
 batch_size = 512
@@ -134,7 +130,10 @@ train_ratio = 0.01 # train on 1 % of the total number of spin configurations
 
 options_dict = {"optimiser": optimiser, "batch_size": batch_size, "loss": loss}
 
-for parameter in parameters_set:
+for parameter, gs in zip(parameters_set, exact_ground_states_signs):
+    samples = gs[0]
+    phase_signs = gs[1]
+
 	log_file.write(str(parameter) + ' : ')
     for trial_number in range(n_trials):
         ψ_phase = PhaseNet(number_spins)
