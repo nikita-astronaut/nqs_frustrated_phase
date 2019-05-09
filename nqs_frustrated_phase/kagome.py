@@ -32,6 +32,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import math
+import os
 import sys
 import numpy as np
 
@@ -101,6 +102,47 @@ class Kagome(object):
                 )
             )
 
+    @classmethod
+    def diagonalise(cls, j2s):
+        import json
+        import pickle
+        import scipy.sparse.linalg
+        from . import diagonalise
+
+        number_of_spins = len(cls.POSITIONS)
+        this_folder = os.path.dirname(os.path.realpath(__file__))
+        model_folder = "{}/../data/kagome/{}/exact".format(this_folder, number_of_spins)
+        H_j1 = diagonalise.make_hamiltonian(cls.J1_EDGES, number_of_spins)
+        H_j2 = diagonalise.make_hamiltonian(cls.J2_EDGES, number_of_spins)
+
+        xs = np.empty((len(H_j1.l_to_g), H_j1.n), dtype=np.float32)
+        for i, σ in enumerate(H_j1.l_to_g):
+            spin = "{sigma:0{n}b}".format(sigma=σ, n=number_of_spins)
+            for k in range(number_of_spins):
+                xs[i, k] = spin[k] == "1"
+        xs *= 2
+        xs -= 1
+
+        os.makedirs(model_folder, exist_ok=True)
+
+        info = []
+        for j2 in j2s:
+            j2 = round(100 * j2) / 100
+            H = H_j1.matrix + j2 * H_j2.matrix
+            E, ys = scipy.sparse.linalg.eigsh(H, k=1, which="SA")
+            H = None
+            E = E[0]
+            ys = ys.astype(np.float32)
+            dataset_file = "{}/dataset_{:03d}.pickle".format(
+                model_folder, int(round(100 * j2))
+            )
+            with open(dataset_file, "wb") as out:
+                pickle.dump((xs, ys), out)
+            info.append({"j2": j2, "energy": E, "dataset": dataset_file})
+
+        with open("{}/info.json".format(model_folder), "w") as out:
+            json.dump(info, out)
+
 
 class Kagome18(Kagome):
 
@@ -133,7 +175,6 @@ class Kagome18(Kagome):
         (1, 17),
         (2, 10),
         (3, 4),
-        (3, 17),
         (4, 5),
         (4, 14),
         (5, 7),

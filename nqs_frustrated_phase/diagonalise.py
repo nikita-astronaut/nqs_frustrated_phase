@@ -36,9 +36,9 @@ import time
 import numba
 from numba.types import uint64
 import numpy as np
-import scipy.sparse # Sparse matrices
-import scipy.sparse.linalg # Diagonalisation routines
-import scipy.special # To compute binomial coefficients
+import scipy.sparse  # Sparse matrices
+import scipy.sparse.linalg  # Diagonalisation routines
+import scipy.special  # To compute binomial coefficients
 
 
 def random_input():
@@ -485,7 +485,15 @@ _KAGOME_18 = [
 ]
 
 
-def diagonalise(H, output, nvectors=1):
+def diagonalise(
+    H,
+    output=".",
+    nvectors=1,
+    use_text=True,
+    use_pickle=False,
+    eigenvalues_file="values",
+    eigenvectors_file=lambda i, j: "vector_{}_{}".format(i, j),
+):
     """
     Diagonalises the Hamiltonian ``H``. Results are save to the directory ``output``.
     """
@@ -496,13 +504,36 @@ def diagonalise(H, output, nvectors=1):
 
     if not os.path.exists(output):
         os.mkdir(output)
-    with open("{}/values.txt".format(output), "w") as f:
+    with open("{}/{}.txt".format(output, eigenvalues_file), "w") as f:
         for value in values:
             f.write("{:.10E}\n".format(value))
+
+    if use_pickle:
+        import pickle
+
+        xs = np.empty((len(H.l_to_g), H.n), dtype=np.float32)
+        for i, σ in enumerate(H.l_to_g):
+            spin = "{sigma:0{n}b}".format(sigma=σ, n=H.n)
+            for k in range(H.n):
+                xs[i, k] = spin[k] == "1"
+        xs *= 2
+        xs -= 1
+
     for idx, (value, vector) in enumerate(zip(rounded_values, vectors.T)):
         ([idx_unique],) = np.where(value == values_unique)
-        with open("{}/vector_{}_{}.txt".format(output, idx, idx_unique), "w") as f:
-            for σ, ψ in zip(H.l_to_g, vector):
-                f.write(
-                    "{sigma:0{n}b}\t{psi:.10E}\t0.0\n".format(sigma=σ, n=H.n, psi=ψ)
-                )
+
+        if use_pickle:
+            with open(
+                "{}/{}.pickle".format(output, eigenvectors_file(idx, idx_unique)), "wb"
+            ) as f:
+                ys = vector.astype(np.float32)
+                pickle.dump((xs, ys), f)
+
+        if use_text:
+            with open(
+                "{}/{}.txt".format(output, eigenvectors_file(idx, idx_unique)), "w"
+            ) as f:
+                for σ, ψ in zip(H.l_to_g, vector):
+                    f.write(
+                        "{sigma:0{n}b}\t{psi:.10E}\t0.0\n".format(sigma=σ, n=H.n, psi=ψ)
+                    )
