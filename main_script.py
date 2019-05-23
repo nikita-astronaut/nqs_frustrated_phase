@@ -130,7 +130,7 @@ PhaseNet = import_network("./models/J1J2_model.py") # explicit path to model.py 
 optimiser = lambda p: torch.optim.Adam(p.parameters(), lr=0.003)
 epochs = 20000
 epoch_split = 1
-batch_size = 2 ** 10
+batch_size = 2 ** 14
 loss = torch.nn.CrossEntropyLoss()
 # train_ratio = 0.02 # train on 1 % of the total number of spin configurations
 val_ratio = 0.1 * 1.0
@@ -148,23 +148,19 @@ for parameter, gs in zip(parameters_set, exact_ground_states_signs):
             phase_signs = gs[1]
             ampls = gs[2]
             
-            idxs = np.random.choice(np.arange(len(samples)), size = len(samples), replace=False, p=ampls ** 2 / np.sum(ampls ** 2))
-            samples_trial = samples[idxs]
-            phase_signs_trial = phase_signs[idxs]
-
+            sampled_idxs = np.random.choice(np.arange(len(samples)), size = len(samples) * (train_ratio + val_ratio), replace=False, p=ampls ** 2 / np.sum(ampls ** 2))
+            
             ψ_phase = PhaseNet(number_spins)
 
-            idxs = np.arange(len(samples_trial))
-            np.random.shuffle(idxs)
-            train_idxs = idxs[0:int(train_ratio * len(samples_trial))]
-            val_idxs = idxs[int(train_ratio * len(samples_trial)):int(train_ratio * len(samples_trial) + val_ratio * len(samples_trial))]
+            train_idxs = sampled_idxs[:int(len(samples_idxs) * train_ratio)]
+            val_idxs = sampled_idxs[int(len(samples_idxs) * train_ratio):]
             train_history = []
             val_history = []
 
             for i in range(epochs):
                 print("epoch number: " + str(i))
                 np.random.shuffle(train_idxs)
-                ψ_phase, th, vh = train_phase(ψ_phase, samples_trial[train_idxs[:len(train_idxs) // epoch_split]], phase_signs_trial[train_idxs[:len(train_idxs) // epoch_split]], options_dict, samples_trial[val_idxs], phase_signs_trial[val_idxs], GPU = True)
+                ψ_phase, th, vh = train_phase(ψ_phase, samples[train_idxs], phase_signs[train_idxs], options_dict, samples[val_idxs], phase_signs[val_idxs], GPU = True)
                 train_history = train_history + th
                 val_history = val_history + vh
                 # print("For parameter = " + str(parameter) + ", iteration " + str(i) + " train accuracy: " + str(th[0]) + ", val accuracy " + str(vh[0]))
