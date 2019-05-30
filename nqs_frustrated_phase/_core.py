@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # Copyright Tom Westerhout (c) 2019
 #
 # All rights reserved.
@@ -31,21 +29,20 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import json
+import math
 import os
+import pickle
+import re
+import sys
 import time
+
 import numba
 from numba.types import uint64
 import numpy as np
 import scipy.sparse  # Sparse matrices
 import scipy.sparse.linalg  # Diagonalisation routines
 import scipy.special  # To compute binomial coefficients
-
-
-def random_input():
-    x = np.random.randint(0xFFFFFFFFFFFFFFFF, dtype=np.uint64)
-    i = np.random.randint(0, 64, dtype=np.uint64)
-    j = np.random.randint(i + 1, 65, dtype=np.uint64)
-    return (x, i, j)
 
 
 @numba.jit("u8(u8, u8, u8)", nopython=True)
@@ -211,7 +208,7 @@ def sector(n, m):
 
 
 @numba.jit("u8(u8, u8, i8[:,:], f8[:], i8[:])", nopython=True)
-def fill_row(s, n, edges, coeffs, indices) -> int:
+def _fill_row(s, n, edges, coeffs, indices) -> int:
     """
     Fills the row of the Hamiltonian matrix corresponding to the basis vector
     ``s``. ``n`` is total number of spins. ``edges`` is a 2D array of shape ?x2
@@ -252,7 +249,7 @@ def deduce_number_of_spins(edges):
     return largest + 1
 
 
-class _Hamiltonian(object):
+class Hamiltonian(object):
     def __init__(self, n, matrix, l_to_g):
         self.n = n
         self.matrix = matrix
@@ -320,7 +317,7 @@ def make_hamiltonian(edges, number_of_spins=None):
     indices = np.empty(len(edges) + 1, dtype=np.int64)
     count = 0
     for s in all_spins:
-        k = fill_row(s, n, edges, coeffs, indices)
+        k = _fill_row(s, n, edges, coeffs, indices)
         if count + k > size:
             size += size_step
             data = np.resize(data, size)
@@ -342,198 +339,59 @@ def make_hamiltonian(edges, number_of_spins=None):
     matrix = scipy.sparse.csr_matrix(
         (data, (row_ind, col_ind)), shape=(len(all_spins), len(all_spins))
     )
-    return _Hamiltonian(n, matrix, all_spins)
+    return Hamiltonian(n, matrix, all_spins)
 
 
-def make_j1j2_hamiltonian(n, j2, edges_j1, edges_j2):
-    """
-    Constructs the Hamiltonian for a J1-J2 model.
-
-    :param n:  Number of spins in the system.
-    :param j2: ``J2/J1``.
-    :edges_j1: Adjacency list of the graph with coupling J1.
-    :edges_j2: Adjacency list of the graph with coupling J2.
-
-    **TODO**: Implementation could be optimised if the second part of the
-    Hamiltonian construction used l_to_g from the first one.
-    """
-    H = make_hamiltonian(edges_j1)
-    H_j2 = make_hamiltonian(edges_j2)
-    H_j2.matrix *= j2
-    H.matrix += H_j2.matrix
-    return H
-
-
-def make_j1j2_graph(L_x, L_y):
-    """
-    Returns adjacency lists of a J1-J2 model on a square lattice with given
-    size. Periodic boundary conditions are used.
-    """
-
-    def coord2index(x, y):
-        return x + y * L_x
-
-    def left(x, y):
-        return (x - 1 if x > 0 else L_x - 1, y)
-
-    def right(x, y):
-        return (x + 1 if x < L_x - 1 else 0, y)
-
-    def down(x, y):
-        return (x, y - 1 if y > 0 else L_y - 1)
-
-    def up(x, y):
-        return (x, y + 1 if y < L_y - 1 else 0)
-
-    def nearest_neighbours(p):
-        site = coord2index(*p)
-        return filter(
-            lambda t: t[0] < t[1],
-            map(
-                lambda t: (site, coord2index(*t)),
-                [left(*p), right(*p), down(*p), up(*p)],
-            ),
+class System(object):
+    @classmethod
+    def diagonalise(cls, j2s, out_dir=None):
+        number_of_spins = len(cls.POSITIONS)
+        if out_dir is None:
+            this_folder = os.path.dirname(os.path.realpath(__file__))
+            out_dir = os.path.join(this_folder, "..", "data")
+        model_folder = os.path.join(
+            out_dir,
+            re.match(r"^(.+[^0-9])[0-9]+$", cls.__name__).group(1).lower(),
+            str(number_of_spins),
+            "exact",
         )
+        H_j1 = make_hamiltonian(cls.J1_EDGES, number_of_spins)
+        H_j2 = make_hamiltonian(cls.J2_EDGES, number_of_spins)
 
-    def next_nearest_neighbours(p):
-        site = coord2index(*p)
-        return filter(
-            lambda t: t[0] < t[1],
-            map(
-                lambda t: (site, coord2index(*t)),
-                [up(*left(*p)), down(*left(*p)), up(*right(*p)), down(*right(*p))],
-            ),
-        )
-
-    edges_j1 = []
-    edges_j2 = []
-    for i in range(L_x):
-        for j in range(L_y):
-            for edge in nearest_neighbours((i, j)):
-                edges_j1.append(edge)
-            for edge in next_nearest_neighbours((i, j)):
-                edges_j2.append(edge)
-    return edges_j1, edges_j2
-
-
-_CHAIN_4 = [(0, 1), (1, 2), (2, 3), (3, 0)]
-_CHAIN_5 = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 0)]
-_KAGOME_12 = [
-    (0, 1),
-    (0, 2),
-    (0, 4),
-    (0, 8),
-    (1, 2),
-    (1, 3),
-    (1, 11),
-    (2, 6),
-    (2, 10),
-    (3, 4),
-    (3, 5),
-    (3, 11),
-    (4, 5),
-    (4, 8),
-    (5, 7),
-    (5, 9),
-    (6, 7),
-    (6, 8),
-    (6, 10),
-    (7, 8),
-    (7, 9),
-    (9, 10),
-    (9, 11),
-    (10, 11),
-]
-
-_KAGOME_18 = [
-    (0, 1),
-    (0, 2),
-    (0, 4),
-    (0, 14),
-    (1, 2),
-    (1, 3),
-    (1, 17),
-    (2, 6),
-    (2, 10),
-    (3, 4),
-    (3, 5),
-    (3, 17),
-    (4, 5),
-    (4, 14),
-    (5, 7),
-    (5, 9),
-    (6, 7),
-    (6, 8),
-    (6, 10),
-    (7, 8),
-    (7, 9),
-    (8, 12),
-    (8, 16),
-    (9, 10),
-    (9, 11),
-    (10, 11),
-    (11, 13),
-    (11, 15),
-    (12, 13),
-    (12, 14),
-    (12, 16),
-    (13, 14),
-    (13, 15),
-    (15, 16),
-    (15, 17),
-    (16, 17),
-]
-
-
-def diagonalise(
-    H,
-    output=".",
-    nvectors=1,
-    use_text=True,
-    use_pickle=False,
-    eigenvalues_file="values",
-    eigenvectors_file=lambda i, j: "vector_{}_{}".format(i, j),
-):
-    """
-    Diagonalises the Hamiltonian ``H``. Results are save to the directory ``output``.
-    """
-    values, vectors = scipy.sparse.linalg.eigsh(H.matrix, k=nvectors, which="SA")
-    # Rounding so that we can detect degeneracy
-    rounded_values = (values * 1e5).astype(np.int64) / 1e5
-    values_unique = np.unique(rounded_values)
-
-    if not os.path.exists(output):
-        os.mkdir(output)
-    with open("{}/{}.txt".format(output, eigenvalues_file), "w") as f:
-        for value in values:
-            f.write("{:.10E}\n".format(value))
-
-    if use_pickle:
-        import pickle
-
-        xs = np.empty((len(H.l_to_g), H.n), dtype=np.float32)
-        for i, σ in enumerate(H.l_to_g):
-            spin = "{sigma:0{n}b}".format(sigma=σ, n=H.n)
-            for k in range(H.n):
+        xs = np.empty((len(H_j1.l_to_g), H_j1.n), dtype=np.float32)
+        for i, σ in enumerate(H_j1.l_to_g):
+            spin = "{sigma:0{n}b}".format(sigma=σ, n=number_of_spins)
+            for k in range(number_of_spins):
                 xs[i, k] = spin[k] == "1"
         xs *= 2
         xs -= 1
 
-    for idx, (value, vector) in enumerate(zip(rounded_values, vectors.T)):
-        ([idx_unique],) = np.where(value == values_unique)
+        os.makedirs(model_folder, exist_ok=True)
 
-        if use_pickle:
-            with open(
-                "{}/{}.pickle".format(output, eigenvectors_file(idx, idx_unique)), "wb"
-            ) as f:
-                ys = vector.astype(np.float32)
-                pickle.dump((xs, ys), f)
+        info = []
+        for j2 in j2s:
+            j2 = round(1000 * j2) / 1000
+            H = H_j1.matrix + j2 * H_j2.matrix
+            E, ys = scipy.sparse.linalg.eigsh(H, k=1, which="SA")
+            H = None
+            E = E[0]
+            ys = ys.astype(np.float32)
+            dataset_file = os.path.join(
+                model_folder, "dataset_{:04d}.pickle".format(int(round(1000 * j2)))
+            )
+            with open(dataset_file, "wb") as out:
+                pickle.dump((xs, ys), out)
+            info.append(
+                {"j2": j2, "energy": E, "dataset": os.path.realpath(dataset_file)}
+            )
 
-        if use_text:
-            with open(
-                "{}/{}.txt".format(output, eigenvectors_file(idx, idx_unique)), "w"
-            ) as f:
-                for σ, ψ in zip(H.l_to_g, vector):
-                    f.write(
-                        "{sigma:0{n}b}\t{psi:.10E}\t0.0\n".format(sigma=σ, n=H.n, psi=ψ)
-                    )
+        if os.path.exists(os.path.join(model_folder, "info.json")):
+            with open(os.path.join(model_folder, "info.json"), "r") as input:
+                for _obj in json.load(input):
+                    j2 = _obj["j2"]
+                    if j2 not in (x["j2"] for x in info):
+                        info.append(_obj)
+
+        info = sorted(info, key=lambda x: x["j2"])
+        with open(os.path.join(model_folder, "info.json"), "w") as out:
+            json.dump(info, out)

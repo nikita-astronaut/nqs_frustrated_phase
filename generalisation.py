@@ -1,38 +1,43 @@
 #!/usr/bin/env python3
 
-import cmath
-import collections
+from copy import deepcopy
 
-# from copy import deepcopy
 # import cProfile
-# import importlib
-from itertools import islice
-from functools import reduce
-import logging
+import json
 import math
-
-# import os
-# import sys
+import os
+import pickle
+import re
+import sys
+import tempfile
 import time
 from typing import Dict, List, Tuple, Optional
-import tempfile
 
-# import click
-# import mpmath  # Just to be safe: for accurate computation of L2 norms
-from numba import jit, jitclass, uint8, int64, uint64, float32
-
-# from numba.types import Bytes
-# import numba.extending
 import numpy as np
-import scipy.special
-
-# from scipy.sparse.linalg import lgmres, LinearOperator
 import torch
 import torch.utils.data
 
-import lightgbm as lgb
-# import torch.nn as nn
-# import torch.nn.functional as F
+
+# "Borrowed" from pytorch/torch/serialization.py.
+# All credit goes to PyTorch developers.
+def _with_file_like(f, mode, body):
+    """
+    Executes a body function with a file object for f, opening
+    it in 'mode' if it is a string filename.
+    """
+    new_fd = False
+    if (
+        isinstance(f, str)
+        or (sys.version_info[0] == 2 and isinstance(f, unicode))
+        or (sys.version_info[0] == 3 and isinstance(f, pathlib.Path))
+    ):
+        new_fd = True
+        f = open(f, mode)
+    try:
+        return body(f)
+    finally:
+        if new_fd:
+            f.close()
 
 
 def _make_checkpoints_for(n: int, steps: int = 10):
@@ -44,28 +49,64 @@ def _make_checkpoints_for(n: int, steps: int = 10):
     return important_iterations
 
 
-def split_dataset(dataset, fraction=0.01):
+def split_dataset(dataset, fractions, weights=None):
+    """
+    Randomly splits a dataset into ``len(fractions) + 1`` parts
+    """
     n = dataset[0].size(0)
-    indices = torch.randperm(n)
-    middle = int(fraction * n)
-    train = tuple(x[indices[:middle]] for x in dataset)
-    test = tuple(x[indices[middle:]] for x in dataset)
-    # train_x, test_x = x[indices[:middle]], x[indices[middle:]]
-    # train_y, test_y = y[indices[:middle]], y[indices[middle:]]
-    return train, test # (train_x, train_y), (test_x, test_y)
+
+    def parts(xs):
+        first = 0
+        for x in xs:
+            last = first + x
+            yield first, last
+            first = last
+        yield first, n
+
+    # TODO(twesterhout):
+    # Use np.random.choice(xs, size=10000, p=ps) to generate indices with given
+    # weights
+    #
+
+    if weights is None:
+        indices = torch.randperm(n)
+    sets = []
+    for first, last in parts(map(lambda x: int(round(x * n)), fractions)):
+        sets.append(tuple(x[indices[first:last]] for x in dataset))
+    return sets
 
 
 class EarlyStopping(object):
     def __init__(self, patience: int = 7, verbose: bool = False):
+        """
+        Initialises the early stopping observer.
+
+        :param int patience:
+            for how many steps the validation loss is allowed to increase
+            before we stop the learning process.
+        :param bool verbose:
+            whether to print a message every time the loss changes.
+        """
         assert patience > 0, "`patience` must be positive"
         self._patience = patience
         self._verbose = verbose
         self._best_loss = math.inf
         self._should_stop = False
+        # Reserve a 100MB in RAM for storing weights before we turn to using
+        # the filesystem (which is slower).
         self._checkpoint = tempfile.SpooledTemporaryFile(max_size=100 * 1024 * 1024)
+        # Number of iterations since the validation loss has last decreased.
         self._counter = 0
 
     def __call__(self, loss: float, model):
+        """
+        Updates internal state.
+
+        This function should be called every time validation loss is computed.
+
+        :param float loss:            validation loss.
+        :param torch.nn.Module model: neural network model.
+        """
         loss = float(loss)
         if loss < self._best_loss:
             self._save_checkpoint(loss, model)
@@ -84,13 +125,22 @@ class EarlyStopping(object):
 
     @property
     def should_stop(self):
+        """
+        Returns whether the learning process should be stopped.
+        """
         return self._should_stop
 
     @property
     def best_loss(self):
+        """
+        Returns the best validation loss achieved during training.
+        """
         return self._best_loss
 
     def load_best(self, model):
+        """
+        Loads the weights for which the best validation loss was achieved.
+        """
         self._checkpoint.seek(0)
         model.load_state_dict(torch.load(self._checkpoint))
         return model
@@ -108,182 +158,252 @@ class EarlyStopping(object):
         self._checkpoint.truncate()
         torch.save(model.state_dict(), self._checkpoint)
 
-@torch.jit.script
-def negative_log_overlap_real(predicted, expected):
-    predicted = predicted.view([-1])
-    expected = expected.view([-1])
-    sqr_l2_expected = torch.dot(expected, expected)
-    sqr_l2_predicted = torch.dot(predicted, predicted)
-    expected_dot_predicted = torch.dot(expected, predicted)
-    return -0.5 * torch.log(
-        expected_dot_predicted
-        * expected_dot_predicted
-        / (sqr_l2_expected * sqr_l2_predicted)
-    )
 
-def train(ψ, train_set, test_set, config):
-    print("Training...")
-    start = time.time()
-
+def train(ψ, train_set, test_set, **config):
     epochs = config["epochs"]
     optimiser = config["optimiser"](ψ)
     loss_fn = config["loss"]
     check_frequency = config["frequency"]
+    load_best = True  # config["load_best"]
+    verbose = config["verbose"]
+    print_info = print if verbose else lambda *_1, **_2: None
+    accuracy_fn = config.get("accuracy")
+    if accuracy_fn is None:
+        accuracy_fn = lambda _1, _2, _3: 0.0
 
+    print_info("Training on {} spin configurations...".format(train_set[0].size(0)))
+    start = time.time()
+    test_x, test_y, test_weight = test_set
     dataloader = torch.utils.data.DataLoader(
         torch.utils.data.TensorDataset(*train_set),
         batch_size=config["batch_size"],
         shuffle=True,
         num_workers=1,
     )
-    test_x, test_y = test_set
-    checkpoints = set(_make_checkpoints_for(epochs, steps=100))
+    checkpoints = set(_make_checkpoints_for(epochs, steps=100)) if verbose else set()
     early_stopping = EarlyStopping(config["patience"])
-    update_count = 0
-    for i in range(epochs):
-        losses = []
-        for batch_x, batch_y in dataloader:
-            optimiser.zero_grad()
-            loss = loss_fn(ψ(batch_x), batch_y)
-            losses.append(loss.item())
-            loss.backward()
-            optimiser.step()
-            update_count += 1
-            if update_count == check_frequency:
-                update_count = 0
+    train_loss_history = []
+    test_loss_history = []
+
+    def training_loop():
+        update_count = 0
+        for epoch_index in range(epochs):
+            important = epoch_index in checkpoints
+            if important:
+                losses = []
+                accuracies = []
+            for batch_index, (batch_x, batch_y, batch_weight) in enumerate(dataloader):
+                optimiser.zero_grad()
+                predicted = ψ(batch_x)
+                loss = loss_fn(predicted, batch_y, batch_weight)
+                loss.backward()
+                optimiser.step()
+                update_count += 1
                 with torch.no_grad():
-                    loss = loss_fn(ψ(test_x), test_y).item()
-                early_stopping(loss, ψ)
-                if early_stopping.should_stop:
-                    break
-        if early_stopping.should_stop:
-            print(
-                "Stopping at epoch {}: test loss = {:.3e}".format(
-                    i, early_stopping.best_loss
+                    accuracy = accuracy_fn(predicted, batch_y, batch_weight)
+                train_loss_history.append(
+                    (update_count, epoch_index, loss.item(), accuracy)
                 )
-            )
-            early_stopping.load_best(ψ)
-            break
-        if i in checkpoints:
-            losses = torch.tensor(losses)
-            print(
-                "{}%: train loss = {:.3e} ± {:.2e}; train loss ∈ [{:.3e}, {:.3e}]".format(
-                    100 * (i + 1) // epochs,
-                    torch.mean(losses).item(),
-                    torch.std(losses).item(),
-                    torch.min(losses).item(),
-                    torch.max(losses).item(),
+                if important:
+                    losses.append(loss.item())
+                    accuracies.append(accuracy)
+                if update_count % check_frequency == 0:
+                    with torch.no_grad():
+                        predicted = ψ(test_x)
+                        loss = loss_fn(predicted, test_y, test_weight).item()
+                        accuracy = accuracy_fn(predicted, test_y, test_weight)
+                    early_stopping(loss, ψ)
+                    test_loss_history.append(
+                        (update_count, epoch_index, loss, accuracy)
+                    )
+                    if early_stopping.should_stop or 1 - accuracy <= 1e-5:
+                        print_info(
+                            "Stopping at epoch {}, batch {}: test loss = {:.3e}".format(
+                                epoch_index, batch_index, early_stopping.best_loss
+                            )
+                        )
+                        return True
+
+            if important:
+                losses = torch.tensor(losses)
+                accuracies = torch.tensor(accuracies)
+                print_info(
+                    "{:3d}%: train loss     = {:.3e} ± {:.2e}; train loss     ∈ [{:.3e}, {:.3e}]".format(
+                        100 * (epoch_index + 1) // epochs,
+                        torch.mean(losses).item(),
+                        torch.std(losses).item(),
+                        torch.min(losses).item(),
+                        torch.max(losses).item(),
+                    )
                 )
-            )
-    if not early_stopping.should_stop:
-        print("test loss = {:.3e}".format(early_stopping.best_loss))
+                print_info(
+                    "      train accuracy = {:.3e} ± {:.2e}; train accuracy ∈ [{:.3e}, {:.3e}]".format(
+                        torch.mean(accuracies).item(),
+                        torch.std(accuracies).item(),
+                        torch.min(accuracies).item(),
+                        torch.max(accuracies).item(),
+                    )
+                )
+        return False
+
+    stopped_early = training_loop()
+    if load_best:
+        print_info("Loading best weights...")
         early_stopping.load_best(ψ)
-
     finish = time.time()
-    print("Finished training in {:.2f} seconds!".format(finish - start))
-    return ψ
+    print_info("Finished training in {:.2f} seconds!".format(finish - start))
+    return ψ.state_dict(), train_loss_history, test_loss_history
 
 
-def all_spins(n: int, m: Optional[int]) -> torch.Tensor:
-    if m is not None:
-        n_ups = (n + m) // 2
-        n_downs = (n - m) // 2
-        size = int(scipy.special.comb(n, n_ups))
-        spins = torch.empty((size, n), dtype=torch.float32)
-        for i, s in enumerate(
-            map(
-                lambda x: torch.tensor(x, dtype=torch.float32).view(1, -1),
-                perm_unique([1] * n_ups + [-1] * n_downs),
+def import_network(filename: str):
+    import importlib
+
+    module_name, extension = os.path.splitext(os.path.basename(filename))
+    module_dir = os.path.dirname(filename)
+    if extension != ".py":
+        raise ValueError(
+            "Could not import the network from {!r}: not a Python source file.".format(
+                filename
             )
-        ):
-            spins[i, :] = s
-        return spins
-    else:
-        raise NotImplementedError()
+        )
+    if not os.path.exists(filename):
+        raise ValueError(
+            "Could not import the network from {!r}: no such file or directory".format(
+                filename
+            )
+        )
+    sys.path.insert(0, module_dir)
+    module = importlib.import_module(module_name)
+    sys.path.pop(0)
+    return module.Net
 
 
-def accuracy(ψ, test_set):
-    x, expected = test_set
-    with torch.no_grad():
-        predicted = torch.max(ψ(x), dim=1)[1]
-        print("total sign: {}".format(torch.sum(predicted)))
-        return torch.sum(predicted == expected).item() / x.size(0)
+def get_info(system_folder, j2=None):
+    if not os.path.exists(os.path.join(system_folder, "info.json")):
+        raise ValueError(
+            "Could not find {!r} in the system directory {!r}".format(
+                "info.json", system_folder
+            )
+        )
+    with open(os.path.join(system_folder, "info.json"), "r") as input:
+        info = json.load(input)
+    if j2 is not None:
+        info = [x for x in info if x["j2"] in j2]
+    return info
 
 
-_DATASETS = {
-    "1x18": "1x18.dataset.pickle",
-    "1x19": "1x19.dataset.pickle",
-    "1x20": "1x20.dataset.pickle",
-    "Kagome-18": "Kagome-18.dataset.pickle",
-    "test": "Kagome-18.dataset.full.pickle",
-}
+def get_number_spins(config):
+    number_spins = config.get("number_spins")
+    if number_spins is not None:
+        return number_spins
+    match = re.match(r".+/data/(.+)/([0-9]+)/.+", config["system"])
+    if len(match.groups()) != 2:
+        raise ValueError(
+            "Configuration file does not specify the number of spins "
+            "and it could not be extracted from the system folder {!r} either"
+        )
+    return int(match.group(2))
 
 
-def add_features(samples, edges):
-    xs = torch.empty(samples.size(0), samples.size(1) + len(edges), dtype=torch.float32)
-    xs[:, :samples.size(1)] = samples
-    for n, (i, j) in enumerate(edges):
-        xs[:, samples.size(1) + n] = samples[:, i] * samples[:, j]
-    return xs
+def accuracy(predicted, expected, weight):
+    predicted = torch.max(predicted, dim=1)[1]
+    return torch.sum(predicted == expected).item() / float(expected.size(0))
+
+
+def try_one_dataset(dataset, output, Net, number_runs, train_options):
+    # Load the dataset using pickle
+    dataset = tuple(
+        torch.from_numpy(x) for x in _with_file_like(dataset, "rb", pickle.load)
+    )
+    # Pre-processing
+    dataset = (
+        dataset[0],
+        torch.where(dataset[1] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
+        torch.abs(dataset[1]) ** 2,
+    )
+    # TODO(twesterhout): Construct weighted CrossEntropy here using `weights`
+    class Loss(object):
+        def __init__(self):
+            self._fn = torch.nn.CrossEntropyLoss()
+
+        def __call__(self, predicted, expected, weight):
+            return self._fn(predicted, expected)
+
+    loss_fn = Loss()
+    train_options = deepcopy(train_options)
+    train_options["loss"] = loss_fn
+    train_options["accuracy"] = accuracy
+    train_options["optimiser"] = eval(train_options["optimiser"])
+
+    stats = []
+    for i in range(number_runs):
+        module = Net(dataset[0].size(1))
+        train_set, test_set, rest_set = split_dataset(
+            dataset, [train_options["train_fraction"], train_options["test_fraction"]]
+        )
+        state_dict, train_history, test_history = train(
+            module, train_set, test_set, **train_options
+        )
+        with torch.no_grad():
+            predicted = module(rest_set[0])
+            rest_loss = loss_fn(predicted, *rest_set[1:]).item()
+            rest_accuracy = accuracy(predicted, *rest_set[1:])
+
+        best = min(test_history, key=lambda t: t[2])
+        stats.append((*best[2:], rest_loss, rest_accuracy))
+
+        folder = os.path.join(output, str(i + 1))
+        os.makedirs(folder, exist_ok=True)
+        torch.save(state_dict, os.path.join(folder, "state_dict.pickle"))
+        np.savetxt(os.path.join(folder, "train_history.dat"), np.array(train_history))
+        np.savetxt(os.path.join(folder, "test_history.dat"), np.array(test_history))
+
+    stats = np.array(stats)
+    np.savetxt(os.path.join(output, "loss.dat"), stats)
+    return np.vstack((np.mean(stats, axis=0), np.std(stats, axis=0))).T.reshape(-1)
 
 
 def main():
-    dataset = torch.load(_DATASETS["test"])
-    dataset = dataset[0], dataset[1]
-    # dataset = add_features(dataset[0], [(i, (i + 1) % 19) for i in range(19)]), dataset[1]
-    train_set, rest_set = split_dataset(dataset, 0.05)
-    test_set, _ = split_dataset(rest_set, 100 / 95 * 0.05)
-    print(
-        [x.size() for x in train_set],
-        [x.size() for x in rest_set],
-        [x.size() for x in test_set],
-    )
-    print(train_set[0])
-
-    number_spins = train_set[0].size(1)
-    ψ = torch.jit.trace(
-        torch.nn.Sequential(
-            torch.nn.Linear(number_spins, 128),
-            torch.nn.ReLU(),
-            torch.nn.Linear(128, 128),
-            torch.nn.ReLU(),
-            torch.nn.Linear(128, 1),
-            torch.nn.Softplus(),
-        ),
-        torch.rand(32, number_spins),
-        check_trace=False,
-    )
-
-    print("total number of samples: {}".format(dataset[0].size(0)))
-    print(
-        "train set length: {}; test set length: {}".format(
-            train_set[0].size(0), test_set[0].size(0)
+    if not len(sys.argv) == 2:
+        print(
+            "Usage: python3 {} <path-to-json-config>".format(sys.argv[0]),
+            file=sys.stderr,
         )
-    )
-    # print(
-    #     "accuracy: train = {}, test = {}, rest = {}".format(
-    #         accuracy(ψ, train_set), accuracy(ψ, test_set), accuracy(ψ, rest_set)
-    #     )
-    # )
-    train(
-        ψ,
-        train_set,
-        test_set,
-        {
-            "optimiser": lambda m: torch.optim.Adam(m.parameters(), lr=0.001),
-            "epochs": 200,
-            "batch_size": 32,
-            "loss": negative_log_overlap_real, # torch.nn.CrossEntropyLoss(),
-            "frequency": 10,
-            "patience": 1000,
-        },
-    )
-    # print(
-    #     "accuracy: train = {}, test = {}, rest = {}".format(
-    #         accuracy(ψ, train_set), accuracy(ψ, test_set), accuracy(ψ, rest_set)
-    #     )
-    # )
-    torch.save(ψ.state_dict(), "pre-training.1.pickle")
+        sys.exit(1)
+    config = _with_file_like(sys.argv[1], "r", json.load)
+    system_folder = config["system"]
+    output = config["output"]
+    number_spins = get_number_spins(config)
+    number_runs = config["number_runs"]
+    info = get_info(system_folder, config.get("j2"))
+    Net = import_network(config["model"])
+    if config["use_jit"]:
+        _dummy_copy_of_Net = Net
+        Net = lambda n: torch.jit.trace(
+            _dummy_copy_of_Net(n), torch.rand(config["training"]["batch_size"], n)
+        )
+
+    os.makedirs(output, exist_ok=True)
+    results_filename = os.path.join(output, "results.dat")
+    with open(results_filename, "w") as results_file:
+        results_file.write(
+            "# <j2> <test_loss> <test_loss_err> <test_accuracy> "
+            "<test_accuracy_err> <rest_loss> <rest_loss_err> "
+            "<rest_accuracy> <rest_accuracy_err>\n")
+
+    for _obj in info:
+        j2 = _obj["j2"]
+        dataset = _obj["dataset"]
+        local_output = os.path.join(output, "j2={}".format(j2))
+        os.makedirs(local_output, exist_ok=True)
+        local_result = try_one_dataset(
+            dataset, local_output, Net, number_runs, config["training"]
+        )
+        with open(results_filename, "a") as results_file:
+            results_file.write(
+                    ("{:.3f}" + "\t{:.10e}" * 8 + "\n").format(j2, *tuple(local_result))
+            )
+    return
 
 
 if __name__ == "__main__":
