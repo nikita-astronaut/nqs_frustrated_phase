@@ -1,0 +1,20 @@
+{
+    "system": "/storage/astrakhantsev/Tom_nqs_frustrated_phase/data/square/24/exact",
+    "model": "/storage/astrakhantsev/Tom_nqs_frustrated_phase/models/dense_64_ReLU_64_ReLU_2.py",
+    "output": "/storage/astrakhantsev/Tom_nqs_frustrated_phase/workdir/square/24/dense_64_ReLU_64_ReLU_2/wip_1",
+    "j2": [0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80],
+    "number_runs": 5,
+    "use_jit": true,
+    "gpu" : true,
+    "training": {
+        "train_fraction": 0.02,
+        "test_fraction": 0.02,
+        "epochs": 400,
+        "batch_size": 64,
+        "frequency": 10,
+        "patience": 2500,
+        "optimiser": "lambda m: torch.optim.Adam(m.parameters(), lr=0.001)",
+        "load_best": true,
+        "verbose": true
+    }
+}

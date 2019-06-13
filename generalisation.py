@@ -159,7 +159,10 @@ class EarlyStopping(object):
         torch.save(model.state_dict(), self._checkpoint)
 
 
-def train(ψ, train_set, test_set, **config):
+def train(ψ, train_set, test_set, gpu, **config):
+    if gpu:
+        ψ = ψ.cuda()
+    
     epochs = config["epochs"]
     optimiser = config["optimiser"](ψ)
     loss_fn = config["loss"]
@@ -174,6 +177,8 @@ def train(ψ, train_set, test_set, **config):
     print_info("Training on {} spin configurations...".format(train_set[0].size(0)))
     start = time.time()
     test_x, test_y, test_weight = test_set
+    if gpu:
+        test_x, test_y, test_weight = test_x.cuda(), test_y.cuda(), test_weight.cuda()
     dataloader = torch.utils.data.DataLoader(
         torch.utils.data.TensorDataset(*train_set),
         batch_size=config["batch_size"],
@@ -185,6 +190,7 @@ def train(ψ, train_set, test_set, **config):
     train_loss_history = []
     test_loss_history = []
 
+
     def training_loop():
         update_count = 0
         for epoch_index in range(epochs):
@@ -193,6 +199,8 @@ def train(ψ, train_set, test_set, **config):
                 losses = []
                 accuracies = []
             for batch_index, (batch_x, batch_y, batch_weight) in enumerate(dataloader):
+                if gpu:
+                    batch_x, batch_y, batch_weight = batch_x.cuda(), batch_y.cuda(), batch_weight.cuda()
                 optimiser.zero_grad()
                 predicted = ψ(batch_x)
                 loss = loss_fn(predicted, batch_y, batch_weight)
@@ -310,7 +318,7 @@ def accuracy(predicted, expected, weight):
     return torch.sum(predicted == expected).item() / float(expected.size(0))
 
 
-def try_one_dataset(dataset, output, Net, number_runs, train_options):
+def try_one_dataset(dataset, output, Net, number_runs, train_options, gpu = False):
     # Load the dataset using pickle
     dataset = tuple(
         torch.from_numpy(x) for x in _with_file_like(dataset, "rb", pickle.load)
@@ -342,8 +350,10 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options):
             dataset, [train_options["train_fraction"], train_options["test_fraction"]]
         )
         state_dict, train_history, test_history = train(
-            module, train_set, test_set, **train_options
+            module, train_set, test_set, gpu, **train_options
         )
+        if gpu:
+            rest_set = (rest_set[0].cuda(), rest_set[1].cuda(), rest_set[2].cuda())
         with torch.no_grad():
             predicted = module(rest_set[0])
             rest_loss = loss_fn(predicted, *rest_set[1:]).item()
@@ -375,6 +385,7 @@ def main():
     output = config["output"]
     number_spins = get_number_spins(config)
     number_runs = config["number_runs"]
+    gpu = config["gpu"]
     info = get_info(system_folder, config.get("j2"))
     Net = import_network(config["model"])
     if config["use_jit"]:
@@ -397,7 +408,7 @@ def main():
         local_output = os.path.join(output, "j2={}".format(j2))
         os.makedirs(local_output, exist_ok=True)
         local_result = try_one_dataset(
-            dataset, local_output, Net, number_runs, config["training"]
+            dataset, local_output, Net, number_runs, config["training"], gpu
         )
         with open(results_filename, "a") as results_file:
             results_file.write(
