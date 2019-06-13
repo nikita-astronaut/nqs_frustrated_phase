@@ -260,7 +260,9 @@ def train(ψ, train_set, test_set, gpu, **config):
         early_stopping.load_best(ψ)
     finish = time.time()
     print_info("Finished training in {:.2f} seconds!".format(finish - start))
-    return ψ.state_dict(), train_loss_history, test_loss_history
+    if gpu:
+        ψ = ψ.cpu()
+    return ψ, train_loss_history, test_loss_history
 
 
 def import_network(filename: str):
@@ -317,6 +319,20 @@ def accuracy(predicted, expected, weight):
     predicted = torch.max(predicted, dim=1)[1]
     return torch.sum(predicted == expected).item() / float(expected.size(0))
 
+def overlap(ψ, samples, target, weights):
+    BATCH_SIZE = 1024
+    overlap = 0.0
+    target = 2.0 * target.type(torch.FloatTensor) - 1.0
+    for i in range(int(samples.size()[0] / BATCH_SIZE) + 1):
+        idx_min = i * BATCH_SIZE
+        idx_max = (i + 1) * BATCH_SIZE
+        if idx_max > len(samples):
+            idx_max = len(samples)
+        predicted_signs = torch.max(ψ(samples[idx_min:idx_max]), dim=1)[1].type(torch.FloatTensor)
+        predicted_signs = 2.0 * predicted_signs.type(torch.FloatTensor) - 1.0
+        overlap += torch.sum(predicted_signs.type(torch.FloatTensor) * target[idx_min:idx_max].type(torch.FloatTensor) * weights[idx_min:idx_max].type(torch.FloatTensor)).item() / (idx_max - idx_min)
+    
+    return overlap / torch.sum(weights).item()
 
 def try_one_dataset(dataset, output, Net, number_runs, train_options, gpu = False):
     # Load the dataset using pickle
@@ -349,24 +365,30 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, gpu = Fals
         train_set, test_set, rest_set = split_dataset(
             dataset, [train_options["train_fraction"], train_options["test_fraction"]]
         )
-        state_dict, train_history, test_history = train(
+        
+        module, train_history, test_history = train(
             module, train_set, test_set, gpu, **train_options
         )
         if gpu:
+            module = module.cuda()
             rest_set = (rest_set[0].cuda(), rest_set[1].cuda(), rest_set[2].cuda())
         with torch.no_grad():
             predicted = module(rest_set[0])
             rest_loss = loss_fn(predicted, *rest_set[1:]).item()
             rest_accuracy = accuracy(predicted, *rest_set[1:])
+        if gpu:
+            module = module.cpu()
 
         best = min(test_history, key=lambda t: t[2])
+        best_overlap = overlap(module, *dataset)
         stats.append((*best[2:], rest_loss, rest_accuracy))
 
         folder = os.path.join(output, str(i + 1))
         os.makedirs(folder, exist_ok=True)
-        torch.save(state_dict, os.path.join(folder, "state_dict.pickle"))
+        torch.save(module.state_dict(), os.path.join(folder, "state_dict.pickle"))
         np.savetxt(os.path.join(folder, "train_history.dat"), np.array(train_history))
         np.savetxt(os.path.join(folder, "test_history.dat"), np.array(test_history))
+        np.savetxt(os.path.join(folder, "final_overlap.dat"), np.array([best_overlap]))
 
     stats = np.array(stats)
     np.savetxt(os.path.join(output, "loss.dat"), stats)
