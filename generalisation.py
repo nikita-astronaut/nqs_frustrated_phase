@@ -381,14 +381,13 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, gpu = Fals
 
         best = min(test_history, key=lambda t: t[2])
         best_overlap = overlap(module, *dataset)
-        stats.append((*best[2:], rest_loss, rest_accuracy))
+        stats.append((*best[2:], rest_loss, rest_accuracy, best_overlap))
 
         folder = os.path.join(output, str(i + 1))
         os.makedirs(folder, exist_ok=True)
         torch.save(module.state_dict(), os.path.join(folder, "state_dict.pickle"))
         np.savetxt(os.path.join(folder, "train_history.dat"), np.array(train_history))
         np.savetxt(os.path.join(folder, "test_history.dat"), np.array(test_history))
-        np.savetxt(os.path.join(folder, "final_overlap.dat"), np.array([best_overlap]))
 
     stats = np.array(stats)
     np.savetxt(os.path.join(output, "loss.dat"), stats)
@@ -422,7 +421,7 @@ def main():
         results_file.write(
             "# <j2> <test_loss> <test_loss_err> <test_accuracy> "
             "<test_accuracy_err> <rest_loss> <rest_loss_err> "
-            "<rest_accuracy> <rest_accuracy_err>\n")
+            "<rest_accuracy> <rest_accuracy_err> <overlap> <overlap_err>>\n")
 
     for _obj in info:
         j2 = _obj["j2"]
@@ -434,7 +433,7 @@ def main():
         )
         with open(results_filename, "a") as results_file:
             results_file.write(
-                    ("{:.3f}" + "\t{:.10e}" * 8 + "\n").format(j2, *tuple(local_result))
+                    ("{:.3f}" + "\t{:.10e}" * 10 + "\n").format(j2, *tuple(local_result))
             )
     return
 
