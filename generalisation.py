@@ -319,7 +319,10 @@ def accuracy(predicted, expected, weight):
     predicted = torch.max(predicted, dim=1)[1]
     return torch.sum(predicted == expected).item() / float(expected.size(0))
 
-def overlap(ψ, samples, target, weights):
+def overlap(ψ, samples, target, weights, gpu):
+    if gpu:
+        ψ = ψ.cuda()
+        samples = samples.cuda()
     BATCH_SIZE = 1024
     overlap = 0.0
     target = 2.0 * target.type(torch.FloatTensor) - 1.0
@@ -328,10 +331,13 @@ def overlap(ψ, samples, target, weights):
         idx_max = (i + 1) * BATCH_SIZE
         if idx_max > len(samples):
             idx_max = len(samples)
-        predicted_signs = torch.max(ψ(samples[idx_min:idx_max]), dim=1)[1].type(torch.FloatTensor)
+        predicted_signs = torch.max(ψ(samples[idx_min:idx_max]), dim=1)[1].cpu().type(torch.FloatTensor)
         predicted_signs = 2.0 * predicted_signs.type(torch.FloatTensor) - 1.0
         overlap += torch.sum(predicted_signs.type(torch.FloatTensor) * target[idx_min:idx_max].type(torch.FloatTensor) * weights[idx_min:idx_max].type(torch.FloatTensor)).item() / (idx_max - idx_min)
-    
+    if gpu:
+        ψ = ψ.cpu()
+        samples = samples.cpu()
+
     return overlap / torch.sum(weights).item()
 
 def try_one_dataset(dataset, output, Net, number_runs, train_options, gpu = False):
@@ -371,16 +377,19 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, gpu = Fals
         )
         if gpu:
             module = module.cuda()
-            rest_set = (rest_set[0].cuda(), rest_set[1].cuda(), rest_set[2].cuda())
+            rest_set = (rest_set[0].cuda(), rest_set[1], rest_set[2])
+        predicted = torch.zeros([0, 2], dtype=torch.float32)
         with torch.no_grad():
-            predicted = module(rest_set[0])
+            for idxs in np.split(np.arange(rest_set[0].size()[0]), np.arange(0, rest_set[0].size()[0], 10000))[1:]:
+                predicted_local = module(rest_set[0][idxs]).cpu()
+                predicted = torch.cat((predicted, predicted_local), dim = 0)
             rest_loss = loss_fn(predicted, *rest_set[1:]).item()
             rest_accuracy = accuracy(predicted, *rest_set[1:])
+        best_overlap = overlap(module, *dataset, gpu)
         if gpu:
             module = module.cpu()
 
         best = min(test_history, key=lambda t: t[2])
-        best_overlap = overlap(module, *dataset)
         stats.append((*best[2:], rest_loss, rest_accuracy, best_overlap))
 
         folder = os.path.join(output, str(i + 1))
