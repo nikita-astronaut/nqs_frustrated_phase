@@ -159,12 +159,15 @@ class EarlyStopping(object):
         torch.save(model.state_dict(), self._checkpoint)
 
 
-def train(ψ, train_set, test_set, gpu, **config):
+def train(ψ, train_set, test_set, gpu, lr, **config):
     if gpu:
         ψ = ψ.cuda()
     
     epochs = config["epochs"]
     optimiser = config["optimiser"](ψ)
+    for pg in optimiser.param_groups:
+        pg['lr'] = lr
+
     loss_fn = config["loss"]
     check_frequency = config["frequency"]
     load_best = True  # config["load_best"]
@@ -340,7 +343,7 @@ def overlap(ψ, samples, target, weights, gpu):
 
     return overlap / torch.sum(weights).item()
 
-def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02, gpu = False):
+def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02, lr = 0.0003, gpu = False):
     # Load the dataset using pickle
     dataset = tuple(
         torch.from_numpy(x) for x in _with_file_like(dataset, "rb", pickle.load)
@@ -373,7 +376,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
         )
         
         module, train_history, test_history = train(
-            module, train_set, test_set, gpu, **train_options
+            module, train_set, test_set, lr, gpu, **train_options
         )
         if gpu:
             module = module.cuda()
@@ -417,6 +420,7 @@ def main():
     number_spins = get_number_spins(config)
     number_runs = config["number_runs"]
     gpu = config["gpu"]
+    lrs = config.get("lr")
     info = get_info(system_folder, config.get("j2"))
     Net = import_network(config["model"])
     if config["use_jit"]:
@@ -435,14 +439,15 @@ def main():
             "<rest_loss> <rest_loss_err> "
             "<rest_accuracy> <rest_accuracy_err> <overlap> <overlap_err>\n")
 
-    for _obj in info:
+    for _obj,lr in zip(info, lrs):
         for rt in config.get("train_fractions"):
             j2 = _obj["j2"]
+ 
             dataset = _obj["dataset"]
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
             local_result = try_one_dataset(
-                dataset, local_output, Net, number_runs, config["training"], rt, gpu
+                dataset, local_output, Net, number_runs, config["training"], rt, lr, gpu
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
