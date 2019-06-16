@@ -164,9 +164,7 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
         ψ = ψ.cuda()
     
     epochs = config["epochs"]
-    optimiser = config["optimiser"](ψ)
-    for pg in optimiser.param_groups:
-        pg['lr'] = lr
+    optimiser = config['optimiser'](ψ)
 
     loss_fn = config["loss"]
     check_frequency = config["frequency"]
@@ -366,7 +364,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
     train_options = deepcopy(train_options)
     train_options["loss"] = loss_fn
     train_options["accuracy"] = accuracy
-    train_options["optimiser"] = eval(train_options["optimiser"])
+    train_options["optimiser"] = eval(train_options["optimiser"][:-1] + str(', lr = ') + str(lr) + ')')
 
     stats = []
     for i in range(number_runs):

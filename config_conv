@@ -14,7 +14,7 @@
         "batch_size": 128,
         "frequency": 10,
         "patience": 250,
-        "optimiser": "lambda m: torch.optim.Adam(m.parameters(), lr=0.0003)",
+        "optimiser": "lambda m: torch.optim.Adam(m.parameters())",
         "load_best": true,
         "verbose": true
     }
