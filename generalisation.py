@@ -288,7 +288,7 @@ def import_network(filename: str):
     return module.Net
 
 
-def get_info(system_folder, j2=None):
+def get_info(system_folder, j2=None, rt=None):
     if not os.path.exists(os.path.join(system_folder, "info.json")):
         raise ValueError(
             "Could not find {!r} in the system directory {!r}".format(
@@ -340,7 +340,7 @@ def overlap(ψ, samples, target, weights, gpu):
 
     return overlap / torch.sum(weights).item()
 
-def try_one_dataset(dataset, output, Net, number_runs, train_options, gpu = False):
+def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02, gpu = False):
     # Load the dataset using pickle
     dataset = tuple(
         torch.from_numpy(x) for x in _with_file_like(dataset, "rb", pickle.load)
@@ -369,7 +369,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, gpu = Fals
     for i in range(number_runs):
         module = Net(dataset[0].size(1))
         train_set, test_set, rest_set = split_dataset(
-            dataset, [train_options["train_fraction"], train_options["test_fraction"]]
+            dataset, [rt, train_options["test_fraction"]]
         )
         
         module, train_history, test_history = train(
@@ -390,7 +390,8 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, gpu = Fals
             module = module.cpu()
 
         best = min(test_history, key=lambda t: t[2])
-        stats.append((*best[2:], rest_loss, rest_accuracy, best_overlap))
+        best_train = min(train_history, key=lambda t: t[2])
+        stats.append((*best[2:], *best_train[2:], rest_loss, rest_accuracy, best_overlap))
 
         folder = os.path.join(output, str(i + 1))
         os.makedirs(folder, exist_ok=True)
@@ -428,22 +429,25 @@ def main():
     results_filename = os.path.join(output, "results.dat")
     with open(results_filename, "w") as results_file:
         results_file.write(
-            "# <j2> <test_loss> <test_loss_err> <test_accuracy> "
-            "<test_accuracy_err> <rest_loss> <rest_loss_err> "
-            "<rest_accuracy> <rest_accuracy_err> <overlap> <overlap_err>>\n")
+		"# <j2> <train_ratio> <test_loss> <test_loss_err> <test_accuracy> "
+            "<test_accuracy_err> "
+            "<train_loss> <train_loss_err> <train_accuracy> <train_accuracy_err> "
+            "<rest_loss> <rest_loss_err> "
+            "<rest_accuracy> <rest_accuracy_err> <overlap> <overlap_err>\n")
 
     for _obj in info:
-        j2 = _obj["j2"]
-        dataset = _obj["dataset"]
-        local_output = os.path.join(output, "j2={}".format(j2))
-        os.makedirs(local_output, exist_ok=True)
-        local_result = try_one_dataset(
-            dataset, local_output, Net, number_runs, config["training"], gpu
-        )
-        with open(results_filename, "a") as results_file:
-            results_file.write(
-                    ("{:.3f}" + "\t{:.10e}" * 10 + "\n").format(j2, *tuple(local_result))
+        for rt in config.get("train_fractions"):
+            j2 = _obj["j2"]
+            dataset = _obj["dataset"]
+            local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
+            os.makedirs(local_output, exist_ok=True)
+            local_result = try_one_dataset(
+                dataset, local_output, Net, number_runs, config["training"], rt, gpu
             )
+            with open(results_filename, "a") as results_file:
+                results_file.write(
+                        ("{:.3f}\t{:.3f}" + "\t{:.10e}" * 14 + "\n").format(j2, rt, *tuple(local_result))
+                )
     return
 
 
