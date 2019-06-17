@@ -63,13 +63,11 @@ def split_dataset(dataset, fractions, weights=None):
             first = last
         yield first, n
 
-    # TODO(twesterhout):
-    # Use np.random.choice(xs, size=10000, p=ps) to generate indices with given
-    # weights
-    #
-
     if weights is None:
         indices = torch.randperm(n)
+    else:
+        indices = torch.from_numpy(np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=False, p=weights))
+
     sets = []
     for first, last in parts(map(lambda x: int(round(x * n)), fractions)):
         sets.append(tuple(x[indices[first:last]] for x in dataset))
@@ -341,7 +339,7 @@ def overlap(ψ, samples, target, weights, gpu):
 
     return overlap / torch.sum(weights).item()
 
-def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02, lr = 0.0003, gpu = False):
+def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
     # Load the dataset using pickle
     dataset = tuple(
         torch.from_numpy(x) for x in _with_file_like(dataset, "rb", pickle.load)
@@ -352,6 +350,8 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
         torch.where(dataset[1] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
         torch.abs(dataset[1]) ** 2,
     )
+
+    weights = None
     # TODO(twesterhout): Construct weighted CrossEntropy here using `weights`
     class Loss(object):
         def __init__(self):
@@ -359,6 +359,8 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
 
         def __call__(self, predicted, expected, weight):
             return self._fn(predicted, expected)
+    if sampling == "quadratic":
+        weights = dataset[2] / torch.sum(dataset[2])
 
     loss_fn = Loss()
     train_options = deepcopy(train_options)
@@ -370,7 +372,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
     for i in range(number_runs):
         module = Net(dataset[0].size(1))
         train_set, test_set, rest_set = split_dataset(
-            dataset, [rt, train_options["test_fraction"]]
+            dataset, [rt, train_options["test_fraction"]], weights = weights
         )
         module, train_history, test_history = train(
             module, train_set, test_set, gpu, lr, **train_options
@@ -417,6 +419,7 @@ def main():
     number_spins = get_number_spins(config)
     number_runs = config["number_runs"]
     gpu = config["gpu"]
+    sampling = config["sampling"]
     lrs = config.get("lr")
     info = get_info(system_folder, config.get("j2"))
     Net = import_network(config["model"])
@@ -445,7 +448,7 @@ def main():
             os.makedirs(local_output, exist_ok=True)
             print(gpu)
             local_result = try_one_dataset(
-                dataset, local_output, Net, number_runs, config["training"], rt = rt, lr = lr, gpu = gpu
+                dataset, local_output, Net, number_runs, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
