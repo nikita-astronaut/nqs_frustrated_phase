@@ -372,9 +372,8 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
         train_set, test_set, rest_set = split_dataset(
             dataset, [rt, train_options["test_fraction"]]
         )
-        
         module, train_history, test_history = train(
-            module, train_set, test_set, lr, gpu, **train_options
+            module, train_set, test_set, gpu, lr **train_options
         )
         if gpu:
             module = module.cuda()
@@ -444,8 +443,9 @@ def main():
             dataset = _obj["dataset"]
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
+            print(gpu)
             local_result = try_one_dataset(
-                dataset, local_output, Net, number_runs, config["training"], rt, lr, gpu
+                dataset, local_output, Net, number_runs, config["training"], rt = rt, lr = lr, gpu = gpu
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
