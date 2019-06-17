@@ -66,7 +66,7 @@ def split_dataset(dataset, fractions, weights=None):
     if weights is None:
         indices = torch.randperm(n)
     else:
-        indices = torch.from_numpy(np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=False, p=weights))
+        indices = torch.from_numpy(np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=False, p=weights.numpy()[:,0]))
 
     sets = []
     for first, last in parts(map(lambda x: int(round(x * n)), fractions)):
@@ -360,6 +360,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
         def __call__(self, predicted, expected, weight):
             return self._fn(predicted, expected)
     if sampling == "quadratic":
+        print("sampling with |A|^2 weights")
         weights = dataset[2] / torch.sum(dataset[2])
 
     loss_fn = Loss()
