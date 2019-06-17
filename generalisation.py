@@ -373,7 +373,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
             dataset, [rt, train_options["test_fraction"]]
         )
         module, train_history, test_history = train(
-            module, train_set, test_set, gpu, lr **train_options
+            module, train_set, test_set, gpu, lr, **train_options
         )
         if gpu:
             module = module.cuda()
