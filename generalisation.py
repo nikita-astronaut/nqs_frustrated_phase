@@ -369,8 +369,8 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
 
         def __call__(self, predicted, expected, weight, apply_weights = False):
             if not apply_weights:
-                return torch.sum(self._fn(predicted, expected)).item()
-            return torch.sum(self._fn(predicted, expected) * weight).item()
+                return torch.sum(self._fn(predicted, expected))
+            return torch.sum(self._fn(predicted, expected) * weight)
 
     loss_fn = Loss()
     train_options = deepcopy(train_options)
