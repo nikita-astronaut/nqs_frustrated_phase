@@ -368,9 +368,9 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
         def __init__(self):
             self._fn = torch.nn.CrossEntropyLoss(reduction = 'none')
 
-        def __call__(self, predicted, expected, weight, apply_weights = False):
-            if not apply_weights:
-                return torch.sum(self._fn(predicted, expected))
+        def __call__(self, predicted, expected, weight, apply_weights_loss = False):
+            if not apply_weights_loss:
+                return torch.mean(self._fn(predicted, expected))
             return torch.sum(self._fn(predicted, expected) * weight)
 
     loss_fn = Loss()
@@ -396,8 +396,12 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
             for idxs in np.split(np.arange(rest_set[0].size()[0]), np.arange(0, rest_set[0].size()[0], 10000))[1:]:
                 predicted_local = module(rest_set[0][idxs]).cpu()
                 predicted = torch.cat((predicted, predicted_local), dim = 0)
-            rest_loss = loss_fn(predicted, *rest_set[1:], ).item()
-            rest_accuracy = accuracy(predicted, *rest_set[1:], apply_weights_loss = True)  # rest accuracy and loss are computed with 
+            if sampling == "uniform":
+                rest_loss = loss_fn(predicted, *rest_set[1:]).item()
+                rest_accuracy = accuracy(predicted, *rest_set[1:])
+            elif sampling == 'quadratic':
+                rest_loss = loss_fn(predicted, *rest_set[1:], apply_weights_loss = True).item()
+                rest_accuracy = accuracy(predicted, *rest_set[1:], apply_weights_loss = True)  # rest accuracy and loss are computed with 
         best_overlap = overlap(module, *dataset, gpu)
         if gpu:
             module = module.cpu()
@@ -455,7 +459,7 @@ def main():
             "<test_accuracy_err> "
             "<train_loss> <train_loss_err> <train_accuracy> <train_accuracy_err> "
             "<rest_loss> <rest_loss_err> "
-            "<rest_accuracy> <rest_accuracy_err> <overlap> <overlap_err>\n")
+            "<rest_accuracy> <rest_accuracy_err> <overlap> <overlap_err> <total_expr> <total_acc> \n")
 
     for _obj,lr in zip(info, lrs):
         for rt in config.get("train_fractions"):
@@ -469,7 +473,7 @@ def main():
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
-                        ("{:.3f}\t{:.3f}" + "\t{:.10e}" * 14 + "\n").format(j2, rt, *tuple(local_result))
+                        ("{:.3f}\t{:.3f}" + "\t{:.10e}" * 16 + "\n").format(j2, rt, *tuple(local_result))
                 )
     return
 
