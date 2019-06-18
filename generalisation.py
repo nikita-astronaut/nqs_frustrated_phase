@@ -49,7 +49,7 @@ def _make_checkpoints_for(n: int, steps: int = 10):
     return important_iterations
 
 
-def split_dataset(dataset, fractions, weights=None):
+def split_dataset(dataset, fractions, sampling='uniform'):
     """
     Randomly splits a dataset into ``len(fractions) + 1`` parts
     """
@@ -63,10 +63,18 @@ def split_dataset(dataset, fractions, weights=None):
             first = last
         yield first, n
 
+    weights = None
+    if sampling == "quadratic":
+        print("sampling with |A|^2 weights")
+        weights = dataset[2] / torch.sum(dataset[2])
+    else:
+        print("sampling with uniform weights")
+
     if weights is None:
         indices = torch.randperm(n)
     else:
-        indices = torch.from_numpy(np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=False, p=weights.numpy()[:,0]))
+        indices = np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=False, p=weights.numpy()[:,0])
+        indices = torch.from_numpy(np.concatenate([indices, np.setdiff1d(np.arange(n), indices)], axis = 0))
 
     sets = []
     for first, last in parts(map(lambda x: int(round(x * n)), fractions)):
@@ -314,10 +322,12 @@ def get_number_spins(config):
     return int(match.group(2))
 
 
-def accuracy(predicted, expected, weight):
+def accuracy(predicted, expected, weight, apply_weights_loss = False):
     predicted = torch.max(predicted, dim=1)[1]
-    return torch.sum(predicted == expected).item() / float(expected.size(0))
-
+    if not apply_weights_loss:
+        return torch.sum(predicted == expected).item() / float(expected.size(0))
+    return torch.sum( torch.tensor(predicted == expected, dtype=torch.float32) * torch.tensor(weight, dtype = torch.float32) ).item() / float(expected.size(0))
+ 
 def overlap(ψ, samples, target, weights, gpu):
     if gpu:
         ψ = ψ.cuda()
@@ -352,16 +362,15 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
     )
 
     weights = None
-    # TODO(twesterhout): Construct weighted CrossEntropy here using `weights`
+
     class Loss(object):
         def __init__(self):
-            self._fn = torch.nn.CrossEntropyLoss()
+            self._fn = torch.nn.CrossEntropyLoss(reduction = 'none')
 
-        def __call__(self, predicted, expected, weight):
-            return self._fn(predicted, expected)
-    if sampling == "quadratic":
-        print("sampling with |A|^2 weights")
-        weights = dataset[2] / torch.sum(dataset[2])
+        def __call__(self, predicted, expected, weight, apply_weights = False):
+            if not apply_weights:
+                return torch.sum(self._fn(predicted, expected)).item()
+            return torch.sum(self._fn(predicted, expected) * weight).item()
 
     loss_fn = Loss()
     train_options = deepcopy(train_options)
@@ -373,7 +382,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
     for i in range(number_runs):
         module = Net(dataset[0].size(1))
         train_set, test_set, rest_set = split_dataset(
-            dataset, [rt, train_options["test_fraction"]], weights = weights
+            dataset, [rt, train_options["test_fraction"]], sampling = sampling
         )
         module, train_history, test_history = train(
             module, train_set, test_set, gpu, lr, **train_options
@@ -386,8 +395,8 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
             for idxs in np.split(np.arange(rest_set[0].size()[0]), np.arange(0, rest_set[0].size()[0], 10000))[1:]:
                 predicted_local = module(rest_set[0][idxs]).cpu()
                 predicted = torch.cat((predicted, predicted_local), dim = 0)
-            rest_loss = loss_fn(predicted, *rest_set[1:]).item()
-            rest_accuracy = accuracy(predicted, *rest_set[1:])
+            rest_loss = loss_fn(predicted, *rest_set[1:], ).item()
+            rest_accuracy = accuracy(predicted, *rest_set[1:], apply_weights_loss = True)  # rest accuracy and loss are computed with 
         best_overlap = overlap(module, *dataset, gpu)
         if gpu:
             module = module.cpu()
@@ -402,9 +411,16 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
         np.savetxt(os.path.join(folder, "train_history.dat"), np.array(train_history))
         np.savetxt(os.path.join(folder, "test_history.dat"), np.array(test_history))
 
+    #  Andrey asked to check the total expressibility of the model and also plot it
+    module = Net(dataset[0].size(1))
+    module, train_history, test_history = train(
+            module, dataset, dataset, gpu, lr, **train_options
+    )
+    best_expression = min(train_history, key=lambda t: t[2])
+
     stats = np.array(stats)
     np.savetxt(os.path.join(output, "loss.dat"), stats)
-    return np.vstack((np.mean(stats, axis=0), np.std(stats, axis=0))).T.reshape(-1)
+    return np.concatenate([np.vstack((np.mean(stats, axis=0), np.std(stats, axis=0))).T.reshape(-1), np.array([*best_train[2:]])], axis = 0)
 
 
 def main():
@@ -447,7 +463,6 @@ def main():
             dataset = _obj["dataset"]
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
-            print(gpu)
             local_result = try_one_dataset(
                 dataset, local_output, Net, number_runs, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
             )
