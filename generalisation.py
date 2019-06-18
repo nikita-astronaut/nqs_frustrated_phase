@@ -327,7 +327,7 @@ def accuracy(predicted, expected, weight, apply_weights_loss = False):
     if not apply_weights_loss:
         return torch.sum(predicted == expected).item() / float(expected.size(0))
     agreement = predicted == expected
-    return torch.sum(agreement.type(torch.FloatTensor) * torch.tensor(weight, dtype = torch.float32)[:, 0] ).item() / float(expected.size(0))
+    return torch.sum(agreement.type(torch.FloatTensor) * torch.tensor(weight, dtype = torch.float32)[:, 0] ).item()  # / float(expected.size(0))
  
 def overlap(ψ, samples, target, weights, gpu):
     if gpu:
@@ -400,8 +400,8 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
                 rest_loss = loss_fn(predicted, *rest_set[1:]).item()
                 rest_accuracy = accuracy(predicted, *rest_set[1:])
             elif sampling == 'quadratic':
-                rest_loss = loss_fn(predicted, *rest_set[1:], apply_weights_loss = True).item()
-                rest_accuracy = accuracy(predicted, *rest_set[1:], apply_weights_loss = True)  # rest accuracy and loss are computed with 
+                rest_loss = loss_fn(predicted, *dataset[1:], apply_weights_loss = True).item()
+                rest_accuracy = accuracy(predicted, *dataset[1:], apply_weights_loss = True)  # rest accuracy and loss are computed with 
         best_overlap = overlap(module, *dataset, gpu)
         if gpu:
             module = module.cpu()
