@@ -326,7 +326,8 @@ def accuracy(predicted, expected, weight, apply_weights_loss = False):
     predicted = torch.max(predicted, dim=1)[1]
     if not apply_weights_loss:
         return torch.sum(predicted == expected).item() / float(expected.size(0))
-    return torch.sum( torch.tensor(predicted == expected, dtype=torch.float32) * torch.tensor(weight, dtype = torch.float32) ).item() / float(expected.size(0))
+    agreement = predicted == expected
+    return torch.sum(agreement.type(torch.FloatTensor) * torch.tensor(weight, dtype = torch.float32)[:, 0] ).item() / float(expected.size(0))
  
 def overlap(ψ, samples, target, weights, gpu):
     if gpu:
