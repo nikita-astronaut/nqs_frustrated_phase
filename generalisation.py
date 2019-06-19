@@ -412,12 +412,13 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
 
         folder = os.path.join(output, str(i + 1))
         os.makedirs(folder, exist_ok=True)
-        torch.save(module.state_dict(), os.path.join(folder, "state_dict.pickle"))
-        np.savetxt(os.path.join(folder, "train_history.dat"), np.array(train_history))
-        np.savetxt(os.path.join(folder, "test_history.dat"), np.array(test_history))
+        # torch.save(module.state_dict(), os.path.join(folder, "state_dict.pickle"))
+        # np.savetxt(os.path.join(folder, "train_history.dat"), np.array(train_history))
+        # np.savetxt(os.path.join(folder, "test_history.dat"), np.array(test_history))
 
     #  Andrey asked to check the total expressibility of the model and also plot it
     module = Net(dataset[0].size(1))
+    train_options['patience'] *= 5
     module, train_history, test_history = train(
             module, dataset, dataset, gpu, lr, **train_options
     )
@@ -425,7 +426,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
 
     stats = np.array(stats)
     np.savetxt(os.path.join(output, "loss.dat"), stats)
-    return np.concatenate([np.vstack((np.mean(stats, axis=0), np.std(stats, axis=0))).T.reshape(-1), np.array([*best_train[2:]])], axis = 0)
+    return np.concatenate([np.vstack((np.mean(stats, axis=0), np.std(stats, axis=0))).T.reshape(-1), np.array([*best_expression[2:]])], axis = 0)
 
 
 def main():
