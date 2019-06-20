@@ -1,0 +1,22 @@
+{
+    "system": "/home/astrakhantsev/nqs_frustrated_phase/data/kagome/24/exact",
+    "model": "/home/astrakhantsev/nqs_frustrated_phase/models/dense_64_ReLU_64_ReLU_2.py",
+    "output": "/home/astrakhantsev/nqs_frustrated_phase/workdir/kagome/24/dense_64_ReLU_64_ReLU_2/wip_uniform",
+    "j2" : [0.48, 0.49, 0.50, 0.21, 0.52, 0.53, 0.54, 0.55],
+    "lr" : [3e-3, 3e-3, 3e-3, 3e-3, 3e-3, 3e-3, 3e-3, 3e-3], 
+    "number_runs": 10,
+    "use_jit": true,
+    "sampling" : "uniform",
+    "gpu" : true,
+    "train_fractions" : [0.01],
+    "training": {
+        "test_fraction": 0.02,
+        "epochs": 400,
+        "batch_size": 128,
+        "frequency": 10,
+        "patience": 2000,
+        "optimiser": "lambda m: torch.optim.Adam(m.parameters())",
+        "load_best": true,
+        "verbose": true
+    }
+}
