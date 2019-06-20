@@ -5,7 +5,7 @@ import sys
 
 f = open(sys.argv[1], 'r')
 
-df = pd.read_csv(sys.argv[1], sep='\t', comment='#')
+df = pd.read_csv(sys.argv[1], sep=' ', comment='#')
 
 df.columns = ['j2', 'train_ratio', 'test_loss', 'test_loss_err', 'test_acc', 'dtest_acc', 'train_loss', 'train_loss_err', 'train_acc', 'dtrain_acc', 'rest_loss', 'rest_loss_err', 'rest_acc', 'drest_acc', 'overlap', 'doverlap', 'total_loss', 'total_acc']
 
