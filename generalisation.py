@@ -415,6 +415,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
                 for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
                     rest_loss += loss_fn(predicted[idxs], dataset[1][idxs], dataset[2][idxs], apply_weights_loss = True).item()
                     rest_accuracy += accuracy(predicted[idxs], dataset[1][idxs], dataset[2][idxs], apply_weights_loss = True)  # rest accuracy and loss are computed with 
+        
         best_overlap = overlap(module, *dataset, gpu)
         if gpu:
             module = module.cpu()
@@ -426,6 +427,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
 
         folder = os.path.join(output, str(i + 1))
         os.makedirs(folder, exist_ok=True)
+        print("test_acc = {:.10e}, train_acc = {:.10e}, read_acc = {:.10e}".format(best[3], best_train[3], rest_accuracy))
         # torch.save(module.state_dict(), os.path.join(folder, "state_dict.pickle"))
         # np.savetxt(os.path.join(folder, "train_history.dat"), np.array(train_history))
         # np.savetxt(os.path.join(folder, "test_history.dat"), np.array(test_history))
