@@ -391,6 +391,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
         if gpu:
             module = module.cuda()
             rest_set = (rest_set[0].cuda(), rest_set[1], rest_set[2])
+            dataset = (dataset[0].cuda(), dataset[1], dataset[2])
         predicted = torch.zeros([0, 2], dtype=torch.float32)
         with torch.no_grad():
             for idxs in np.split(np.arange(rest_set[0].size()[0]), np.arange(0, rest_set[0].size()[0], 10000))[1:]:
