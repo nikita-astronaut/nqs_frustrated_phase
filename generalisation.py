@@ -390,11 +390,17 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
         )
         if gpu:
             module = module.cuda()
-            rest_set = (rest_set[0].cuda(), rest_set[1], rest_set[2])
-            dataset = (dataset[0].cuda(), dataset[1], dataset[2])
+            if sampling == "uniform":
+                rest_set = (rest_set[0].cuda(), rest_set[1], rest_set[2])
+            elif sampling == "quadratic":
+                dataset = (dataset[0].cuda(), dataset[1], dataset[2])
         predicted = torch.zeros([0, 2], dtype=torch.float32)
         with torch.no_grad():
-            for idxs in np.split(np.arange(rest_set[0].size()[0]), np.arange(0, rest_set[0].size()[0], 10000))[1:]:
+            if sampling == "uniform":
+                size = rest_set[0].size()[0]
+            elif sampling == 'quadratic':
+                size = dataset[0].size()[0]
+            for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
                 if sampling == "uniform":
                     predicted_local = module(rest_set[0][idxs]).cpu()
                 elif sampling == "quadratic":
@@ -404,12 +410,16 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
                 rest_loss = loss_fn(predicted, *rest_set[1:]).item()
                 rest_accuracy = accuracy(predicted, *rest_set[1:])
             elif sampling == 'quadratic':
-                rest_loss = loss_fn(predicted, *dataset[1:], apply_weights_loss = True).item()
-                rest_accuracy = accuracy(predicted, *dataset[1:], apply_weights_loss = True)  # rest accuracy and loss are computed with 
+                rest_loss = 0.0
+                rest_accuracy = 0.0
+                for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
+                    rest_loss += loss_fn(predicted[idxs], dataset[1][idxs], dataset[2][idxs], apply_weights_loss = True).item()
+                    rest_accuracy += accuracy(predicted[idxs], dataset[1][idxs], dataset[2][idxs], apply_weights_loss = True)  # rest accuracy and loss are computed with 
         best_overlap = overlap(module, *dataset, gpu)
         if gpu:
             module = module.cpu()
-
+            if sampling == 'quadratic':
+                dataset = (dataset[0].cpu(), dataset[1], dataset[2])
         best = min(test_history, key=lambda t: t[2])
         best_train = min(train_history, key=lambda t: t[2])
         stats.append((*best[2:], *best_train[2:], rest_loss, rest_accuracy, best_overlap))
