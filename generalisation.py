@@ -390,40 +390,58 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
         )
         if gpu:
             module = module.cuda()
-            rest_set = (rest_set[0].cuda(), rest_set[1], rest_set[2])
+            if sampling == "uniform":
+                rest_set = (rest_set[0].cuda(), rest_set[1], rest_set[2])
+            elif sampling == "quadratic":
+                dataset = (dataset[0].cuda(), dataset[1], dataset[2])
         predicted = torch.zeros([0, 2], dtype=torch.float32)
         with torch.no_grad():
-            for idxs in np.split(np.arange(rest_set[0].size()[0]), np.arange(0, rest_set[0].size()[0], 10000))[1:]:
-                predicted_local = module(rest_set[0][idxs]).cpu()
+            if sampling == "uniform":
+                size = rest_set[0].size()[0]
+            elif sampling == 'quadratic':
+                size = dataset[0].size()[0]
+            for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
+                if sampling == "uniform":
+                    predicted_local = module(rest_set[0][idxs]).cpu()
+                elif sampling == "quadratic":
+                    predicted_local = module(dataset[0][idxs]).cpu()
                 predicted = torch.cat((predicted, predicted_local), dim = 0)
             if sampling == "uniform":
                 rest_loss = loss_fn(predicted, *rest_set[1:]).item()
                 rest_accuracy = accuracy(predicted, *rest_set[1:])
             elif sampling == 'quadratic':
-                rest_loss = loss_fn(predicted, *dataset[1:], apply_weights_loss = True).item()
-                rest_accuracy = accuracy(predicted, *dataset[1:], apply_weights_loss = True)  # rest accuracy and loss are computed with 
+                rest_loss = 0.0
+                rest_accuracy = 0.0
+                for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
+                    rest_loss += loss_fn(predicted[idxs], dataset[1][idxs], dataset[2][idxs], apply_weights_loss = True).item()
+                    rest_accuracy += accuracy(predicted[idxs], dataset[1][idxs], dataset[2][idxs], apply_weights_loss = True)  # rest accuracy and loss are computed with 
+        
         best_overlap = overlap(module, *dataset, gpu)
         if gpu:
             module = module.cpu()
-
+            if sampling == 'quadratic':
+                dataset = (dataset[0].cpu(), dataset[1], dataset[2])
         best = min(test_history, key=lambda t: t[2])
         best_train = min(train_history, key=lambda t: t[2])
         stats.append((*best[2:], *best_train[2:], rest_loss, rest_accuracy, best_overlap))
 
         folder = os.path.join(output, str(i + 1))
         os.makedirs(folder, exist_ok=True)
+        print("test_acc = {:.10e}, train_acc = {:.10e}, read_acc = {:.10e}".format(best[3], best_train[3], rest_accuracy))
         # torch.save(module.state_dict(), os.path.join(folder, "state_dict.pickle"))
         # np.savetxt(os.path.join(folder, "train_history.dat"), np.array(train_history))
         # np.savetxt(os.path.join(folder, "test_history.dat"), np.array(test_history))
 
     #  Andrey asked to check the total expressibility of the model and also plot it
+    '''
     module = Net(dataset[0].size(1))
     train_options['patience'] *= 5
     module, train_history, test_history = train(
             module, dataset, dataset, gpu, lr, **train_options
     )
+    '''
     best_expression = min(train_history, key=lambda t: t[2])
-
+    
     stats = np.array(stats)
     np.savetxt(os.path.join(output, "loss.dat"), stats)
     return np.concatenate([np.vstack((np.mean(stats, axis=0), np.std(stats, axis=0))).T.reshape(-1), np.array([*best_expression[2:]])], axis = 0)
