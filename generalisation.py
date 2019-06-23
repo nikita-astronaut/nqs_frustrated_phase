@@ -396,13 +396,13 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
             self._fn = torch.nn.CrossEntropyLoss(reduction = 'none')
             self.type = train_type
 
-            def __call__(self, predicted, expected, weight, apply_weights_loss = False):
-                if self.type == 'phase':
-                    if not apply_weights_loss:
-                        return torch.mean(self._fn(predicted, expected))
-                    return torch.sum(self._fn(predicted, expected) * weight)
-                else:
-                    return self._fn(torch.exp(predicted), weight)
+        def __call__(self, predicted, expected, weight, apply_weights_loss = False):
+            if self.type == 'phase':
+                if not apply_weights_loss:
+                    return torch.mean(self._fn(predicted, expected))
+                return torch.sum(self._fn(predicted, expected) * weight)
+            else:
+                return self._fn(torch.exp(predicted), weight)
 
     loss_fn = Loss(train_type = train_options["type"])
     train_options = deepcopy(train_options)
