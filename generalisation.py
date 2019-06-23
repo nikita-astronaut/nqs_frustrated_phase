@@ -329,7 +329,34 @@ def accuracy(predicted, expected, weight, apply_weights_loss = False):
     agreement = predicted == expected
     return torch.sum(agreement.type(torch.FloatTensor) * torch.tensor(weight, dtype = torch.float32)[:, 0] ).item()  # / float(expected.size(0))
  
-def overlap(ψ, samples, target, weights, gpu):
+def overlap(train_type, ψ, samples, target, weights, gpu):
+    if train_type == 'phase':
+        return overlap_phase(ψ, samples, target, weights, gpu)
+    else:
+        return overlap_amplitude(ψ, samples, target, weights, gpu)
+
+def overlap_amplitude(ψ, samples, target, weights, gpu):
+    if gpu:
+        ψ = ψ.cuda()
+        samples = samples.cuda()
+    BATCH_SIZE = 1024
+    overlap = 0.0
+    normalisation = 0.0
+    for i in range(int(samples.size()[0] / BATCH_SIZE) + 1):
+        idx_min = i * BATCH_SIZE
+        idx_max = (i + 1) * BATCH_SIZE
+        if idx_max > len(samples):
+            idx_max = len(samples)
+        predicted_amplitudes = torch.exp(ψ(samples[idx_min:idx_max])).cpu().type(torch.FloatTensor)
+        overlap += torch.sum(torch.sqrt(predicted_amplitudes).type(torch.FloatTensor) * torch.sqrt(weights[idx_min:idx_max]).type(torch.FloatTensor)).item()
+        normalisation += torch.sum(torch.sqrt(predicted_amplitudes).type(torch.FloatTensor) * torch.sqrt(predicted_amplitudes).type(torch.FloatTensor)).item()
+    if gpu:
+        ψ = ψ.cpu()
+        samples = samples.cpu()
+
+    return overlap / np.sqrt(normalisation)
+
+def overlap_phase(ψ, samples, target, weights, gpu):
     if gpu:
         ψ = ψ.cuda()
         samples = samples.cuda()
@@ -365,18 +392,24 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
     weights = None
 
     class Loss(object):
-        def __init__(self):
+        def __init__(self, train_type = 'phase'):
             self._fn = torch.nn.CrossEntropyLoss(reduction = 'none')
+            self.type = train_type
 
-        def __call__(self, predicted, expected, weight, apply_weights_loss = False):
-            if not apply_weights_loss:
-                return torch.mean(self._fn(predicted, expected))
-            return torch.sum(self._fn(predicted, expected) * weight)
+            def __call__(self, predicted, expected, weight, apply_weights_loss = False):
+                if self.type == 'phase':
+                    if not apply_weights_loss:
+                        return torch.mean(self._fn(predicted, expected))
+                    return torch.sum(self._fn(predicted, expected) * weight)
+                else:
+                    return self._fn(torch.exp(predicted), weight)
 
-    loss_fn = Loss()
+    loss_fn = Loss(train_type = train_options["type"])
     train_options = deepcopy(train_options)
     train_options["loss"] = loss_fn
-    train_options["accuracy"] = accuracy
+    if train_options["type"] == "phase":
+        train_options["accuracy"] = accuracy
+
     train_options["optimiser"] = eval(train_options["optimiser"][:-1] + str(', lr = ') + str(lr) + ')')
 
     stats = []
@@ -385,9 +418,11 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
         train_set, test_set, rest_set = split_dataset(
             dataset, [rt, train_options["test_fraction"]], sampling = sampling
         )
+
         module, train_history, test_history = train(
             module, train_set, test_set, gpu, lr, **train_options
         )
+
         if gpu:
             module = module.cuda()
             if sampling == "uniform":
@@ -416,7 +451,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
                     rest_loss += loss_fn(predicted[idxs], dataset[1][idxs], dataset[2][idxs], apply_weights_loss = True).item()
                     rest_accuracy += accuracy(predicted[idxs], dataset[1][idxs], dataset[2][idxs], apply_weights_loss = True)  # rest accuracy and loss are computed with 
         
-        best_overlap = overlap(module, *dataset, gpu)
+        best_overlap = overlap(train_options["type"], module, *dataset, gpu)
         if gpu:
             module = module.cpu()
             if sampling == 'quadratic':
