@@ -393,7 +393,10 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
 
     class Loss(object):
         def __init__(self, train_type = 'phase'):
-            self._fn = torch.nn.CrossEntropyLoss(reduction = 'none')
+            if train_type == 'phase':
+                self._fn = torch.nn.CrossEntropyLoss(reduction = 'none')
+            else:
+                self._fn = torch.nn.MSELoss()
             self.type = train_type
 
         def __call__(self, predicted, expected, weight, apply_weights_loss = False):
