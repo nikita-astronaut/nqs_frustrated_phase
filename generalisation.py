@@ -432,7 +432,10 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
                 rest_set = (rest_set[0].cuda(), rest_set[1], rest_set[2])
             elif sampling == "quadratic":
                 dataset = (dataset[0].cuda(), dataset[1], dataset[2])
-        predicted = torch.zeros([0, 2], dtype=torch.float32)
+        if train_options["type"] == "phase":
+            predicted = torch.zeros([0, 2], dtype=torch.float32)
+        else:
+            predicted = torch.zeros([0, 1], dtype=torch.float32)
         with torch.no_grad():
             if sampling == "uniform":
                 size = rest_set[0].size()[0]
