@@ -458,6 +458,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
                     rest_accuracy += accuracy(predicted[idxs], dataset[1][idxs], dataset[2][idxs], apply_weights_loss = True)  # rest accuracy and loss are computed with 
         
         best_overlap = overlap(train_options["type"], module, *dataset, gpu)
+        print('overlap = ' + str(best_overlap))
         if gpu:
             module = module.cpu()
             if sampling == 'quadratic':
