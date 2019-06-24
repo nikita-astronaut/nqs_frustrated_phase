@@ -17,6 +17,9 @@ import numpy as np
 import torch
 import torch.utils.data
 
+import scipy.io as sio
+from scipy.special import comb
+from itertools import combinations
 
 # "Borrowed" from pytorch/torch/serialization.py.
 # All credit goes to PyTorch developers.
@@ -377,17 +380,59 @@ def overlap_phase(ψ, samples, target, weights, gpu):
 
     return overlap / torch.sum(weights).item()
 
-def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
+def load_dataset_TOM(dataset):
     # Load the dataset using pickle
     dataset = tuple(
         torch.from_numpy(x) for x in _with_file_like(dataset, "rb", pickle.load)
     )
+    
     # Pre-processing
     dataset = (
         dataset[0],
         torch.where(dataset[1] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
         torch.abs(dataset[1]) ** 2,
     )
+    return dataset
+
+def load_dataset_K(dataset):
+    print("load")
+    # Load the dataset and basis
+    mat = sio.loadmat(dataset)
+    dataset = dataset.split("_");
+    dataset[1] = "basis"; 
+    basis = "_".join(dataset[:2]+dataset[-2:])[:-4]
+    basis = _with_file_like(basis, "rb", pickle.load)
+
+    print("construction")
+    # Construction of full basis
+    psi = np.ones((comb(basis.N,basis.N//2,exact=True),basis.N), dtype=np.float32)
+    for ix, item in enumerate(combinations(range(basis.N), basis.N//2)):
+        psi[ix,item] = -1
+
+    print("expansion")
+    # Expansion of eigenstate
+    phi = basis.get_vec(mat['psi'][:,0], sparse = False, pcon=True).astype(np.float32)    
+    
+    dataset = (psi, phi)
+    
+    dataset = tuple(
+        torch.from_numpy(x) for x in dataset
+    )
+    # Pre-processing
+    dataset = (
+        dataset[0],
+        torch.where(dataset[1] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
+        (torch.abs(dataset[1]) ** 2).unsqueeze(1),
+    )
+    return dataset
+    
+def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
+    if dataset.endswith("pickle"):
+        dataset = load_dataset_TOM(dataset)
+    elif dataset.endswith("mat"):
+        dataset = load_dataset_K(dataset)
+    else:
+        raise Exception('dataset should be either *.mat or *.pickle file, received: '+dataset)
 
     weights = None
 
