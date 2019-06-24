@@ -405,7 +405,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
                     return torch.mean(self._fn(predicted, expected))
                 return torch.sum(self._fn(predicted, expected) * weight)
             else:
-                return self._fn(predicted, np.log(weight))
+                return self._fn(predicted, torch.log(weight))
 
     loss_fn = Loss(train_type = train_options["type"])
     train_options = deepcopy(train_options)
