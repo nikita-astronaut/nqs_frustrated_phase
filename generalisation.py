@@ -506,14 +506,18 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
                     rest_accuracy += accuracy(predicted[idxs], dataset[1][idxs], dataset[2][idxs], apply_weights_loss = True)  # rest accuracy and loss are computed with 
         
         best_overlap = overlap(train_options["type"], module, *dataset, gpu)
-        print('overlap = ' + str(best_overlap))
+        print('total dataset overlap = ' + str(best_overlap))
+
+        rest_overlap = overlap(train_options["type"], module, *rest_set, gpu)
+        print('rest dataset overlap = ' + str(rest_overlap))
+
         if gpu:
             module = module.cpu()
             if sampling == 'quadratic':
                 dataset = (dataset[0].cpu(), dataset[1], dataset[2])
         best = min(test_history, key=lambda t: t[2])
         best_train = min(train_history, key=lambda t: t[2])
-        stats.append((*best[2:], *best_train[2:], rest_loss, rest_accuracy, best_overlap))
+        stats.append((*best[2:], *best_train[2:], rest_loss, rest_accuracy, best_overlap, rest_overlap))
 
         folder = os.path.join(output, str(i + 1))
         os.makedirs(folder, exist_ok=True)
@@ -574,7 +578,7 @@ def main():
             "<test_accuracy_err> "
             "<train_loss> <train_loss_err> <train_accuracy> <train_accuracy_err> "
             "<rest_loss> <rest_loss_err> "
-            "<rest_accuracy> <rest_accuracy_err> <overlap> <overlap_err> <total_expr> <total_acc> \n")
+            "<rest_accuracy> <rest_accuracy_err> <total_overlap> <total_overlap_err> <rest_overlap> <rest_overlap_err> <total_expr> <total_acc> \n")
 
     for _obj,lr in zip(info, lrs):
         for rt in config.get("train_fractions"):
