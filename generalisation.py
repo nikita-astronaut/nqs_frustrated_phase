@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 
 from copy import deepcopy
+import datetime
 
 # import cProfile
+from shutil import copyfile
 import json
 import math
 import os
+import os.path
 import pickle
 import re
 import sys
@@ -559,9 +562,15 @@ def main():
 
     os.makedirs(output, exist_ok=True)
     results_filename = os.path.join(output, "results.dat")
-    with open(results_filename, "w") as results_file:
-        results_file.write(
-		"# <j2> <train_ratio> <test_loss> <test_loss_err> <test_accuracy> "
+    copyfile(sys.argv[1], os.path.join(output, "config.dat"))  # copy config file to the same location where the results.txt file is
+    if os.path.isfile(results_filename):
+        results_file = open(results_filename, "a")
+    else:
+        results_file = open(results_filename, "w")
+
+    results_file.write("# process with pid = " + str(os.getpid()) + ', launched at ' + str(datetime.datetime.now()) + '\n')
+    results_file.write(
+            "# <j2> <train_ratio> <test_loss> <test_loss_err> <test_accuracy> "
             "<test_accuracy_err> "
             "<train_loss> <train_loss_err> <train_accuracy> <train_accuracy_err> "
             "<rest_loss> <rest_loss_err> "
