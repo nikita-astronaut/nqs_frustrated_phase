@@ -429,7 +429,7 @@ def load_dataset_K(dataset):
     )
     return dataset
     
-def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
+def try_one_dataset(dataset, output, Net, number_runs, number_best, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
     if dataset.endswith("pickle"):
         dataset = load_dataset_TOM(dataset)
     elif dataset.endswith("mat"):
@@ -464,6 +464,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
     train_options["optimiser"] = eval(train_options["optimiser"][:-1] + str(', lr = ') + str(lr) + ')')
 
     stats = []
+    rest_overlaps = []
     for i in range(number_runs):
         module = Net(dataset[0].size(1))
         train_set, test_set, rest_set = split_dataset(
@@ -509,6 +510,7 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
         print('total dataset overlap = ' + str(best_overlap))
 
         rest_overlap = overlap(train_options["type"], module, *rest_set, gpu)
+        rest_overlaps.append(rest_overlap)
         print('rest dataset overlap = ' + str(rest_overlap))
 
         if gpu:
@@ -537,6 +539,8 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
     best_expression = min(train_history, key=lambda t: t[2])
     
     stats = np.array(stats)
+    best_runs_ids = np.argsort(-np.array(rest_overlaps))[:number_best]
+    stats = stats[best_runs_ids, ...]
     np.savetxt(os.path.join(output, "loss.dat"), stats)
     return np.concatenate([np.vstack((np.mean(stats, axis=0), np.std(stats, axis=0))).T.reshape(-1), np.array([*best_expression[2:]])], axis = 0)
 
@@ -553,6 +557,7 @@ def main():
     output = config["output"]
     number_spins = get_number_spins(config)
     number_runs = config["number_runs"]
+    number_best = config["number_best"]
     gpu = config["gpu"]
     sampling = config["sampling"]
     lrs = config.get("lr")
@@ -588,7 +593,7 @@ def main():
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
             local_result = try_one_dataset(
-                dataset, local_output, Net, number_runs, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
+                dataset, local_output, Net, number_runs, number_best, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
