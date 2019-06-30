@@ -475,9 +475,14 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
             module, train_set, test_set, gpu, lr, **train_options
         )
 
+        resampled_set, _, _ = split_dataset(
+            dataset, [rt, train_options["test_fraction"]], sampling = sampling
+        )
+
         if gpu:
             module = module.cuda()
             rest_set = (rest_set[0].cuda(), rest_set[1], rest_set[2])
+            resampled_set = (resampled_set[0].cuda(), resampled_set[1], resampled_set[2])
         if sampling == "quadratic":
             rest_set = (rest_set[0], rest_set[1], rest_set[2] / torch.sum(rest_set[2]))
         else:
@@ -498,7 +503,8 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
             for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
                 rest_loss += loss_fn(predicted[idxs], rest_set[1][idxs], rest_set[2][idxs], apply_weights_loss = True).item()
                 rest_accuracy += accuracy(predicted[idxs], rest_set[1][idxs], rest_set[2][idxs], apply_weights_loss = True)
- 
+            resampled_loss = loss_fn(module(resampled_set[0]).cpu(), resampled_set[1], resampled_set[2]).item()
+            resampled_acc = accuracy(module(resampled_set[0]).cpu(), resampled_set[1], resampled_set[2])
         #    rest_loss /= len(np.split(np.arange(size), np.arange(0, size, 10000))[1:])
         #    if sampling == "uniform":
         #        rest_accuracy /= len(np.split(np.arange(size), np.arange(0, size, 10000))[1:])
@@ -515,12 +521,12 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
                 dataset = (dataset[0].cpu(), dataset[1], dataset[2])
         best = min(test_history, key=lambda t: t[2])
         best_train = min(train_history, key=lambda t: t[2])
-        stats.append((*best[2:], *best_train[2:], rest_loss, rest_accuracy, best_overlap, rest_overlap))
+        stats.append((*best[2:], *best_train[2:], rest_loss, rest_accuracy, resampled_loss, resampled_acc, best_overlap, rest_overlap))
 
         folder = os.path.join(output, str(i + 1))
         os.makedirs(folder, exist_ok=True)
-        print("test_acc = {:.10e}, train_acc = {:.10e}, rest_acc = {:.10e}".format(best[3], best_train[3], rest_accuracy))
-        print("test_loss = {:.10e}, train_loss = {:.10e}, rest_loss = {:.10e}".format(best[2], best_train[2], rest_loss))
+        print("test_acc = {:.10e}, train_acc = {:.10e}, rest_acc = {:.10e}, resampled_acc = {:.10e}".format(best[3], best_train[3], rest_accuracy, resampled_acc))
+        print("test_loss = {:.10e}, train_loss = {:.10e}, rest_loss = {:.10e}, resampled_loss = {:.10e}".format(best[2], best_train[2], rest_loss, resampled_loss))
         # torch.save(module.state_dict(), os.path.join(folder, "state_dict.pickle"))
         # np.savetxt(os.path.join(folder, "train_history.dat"), np.array(train_history))
         # np.savetxt(os.path.join(folder, "test_history.dat"), np.array(test_history))
@@ -580,7 +586,10 @@ def main():
             "<test_accuracy_err> "
             "<train_loss> <train_loss_err> <train_accuracy> <train_accuracy_err> "
             "<rest_loss> <rest_loss_err> "
-            "<rest_accuracy> <rest_accuracy_err> <total_overlap> <total_overlap_err> <rest_overlap> <rest_overlap_err> <total_expr> <total_acc> \n")
+            "<rest_accuracy> <rest_accuracy_err> "
+            "<resampled_loss> <resampled_loss_err> "
+            "<resampled_accuracy> <resampled_accuracy_err>"
+            " <total_overlap> <total_overlap_err> <rest_overlap> <rest_overlap_err> <total_expr> <total_acc> \n")
 
     for _obj,lr in zip(info, lrs):
         for rt in config.get("train_fractions"):
@@ -594,7 +603,7 @@ def main():
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
-                        ("{:.3f} {:.3f}" + " {:.10e}" * 18 + "\n").format(j2, rt, *tuple(local_result))
+                        ("{:.3f} {:.3f}" + " {:.10e}" * 22 + "\n").format(j2, rt, *tuple(local_result))
                 )
     return
 
