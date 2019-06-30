@@ -477,25 +477,19 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
 
         if gpu:
             module = module.cuda()
-            if sampling == "uniform":
-                rest_set = (rest_set[0].cuda(), rest_set[1], rest_set[2])
-            elif sampling == "quadratic":
-                dataset = (dataset[0].cuda(), dataset[1], dataset[2])
+            rest_set = (rest_set[0].cuda(), rest_set[1], rest_set[2])
+        rest_set = (rest_set[0], rest_set[1], rest_set[2] / torch.sum(rest_set[2]))
         if train_options["type"] == "phase":
             predicted = torch.zeros([0, 2], dtype=torch.float32)
         else:
             predicted = torch.zeros([0, 1], dtype=torch.float32)
+
         with torch.no_grad():
-            if sampling == "uniform":
-                size = rest_set[0].size()[0]
-            elif sampling == 'quadratic':
-                size = dataset[0].size()[0]
+            size = rest_set[0].size()[0]
             for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
-                if sampling == "uniform":
-                    predicted_local = module(rest_set[0][idxs]).cpu()
-                elif sampling == "quadratic":
-                    predicted_local = module(dataset[0][idxs]).cpu()
+                predicted_local = module(rest_set[0][idxs]).cpu()
                 predicted = torch.cat((predicted, predicted_local), dim = 0)
+
             if sampling == "uniform":
                 rest_loss = loss_fn(predicted, *rest_set[1:]).item()
                 rest_accuracy = accuracy(predicted, *rest_set[1:])
@@ -503,8 +497,8 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
                 rest_loss = 0.0
                 rest_accuracy = 0.0
                 for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
-                    rest_loss += loss_fn(predicted[idxs], dataset[1][idxs], dataset[2][idxs], apply_weights_loss = True).item()
-                    rest_accuracy += accuracy(predicted[idxs], dataset[1][idxs], dataset[2][idxs], apply_weights_loss = True)  # rest accuracy and loss are computed with 
+                    rest_loss += loss_fn(predicted[idxs], rest_set[1][idxs], rest_set[2][idxs], apply_weights_loss = True).item()
+                    rest_accuracy += accuracy(predicted[idxs], rest_set[1][idxs], rest_set[2][idxs], apply_weights_loss = True)  # rest accuracy and loss are computed with 
         
         best_overlap = overlap(train_options["type"], module, *dataset, gpu)
         print('total dataset overlap = ' + str(best_overlap))
@@ -523,7 +517,8 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
 
         folder = os.path.join(output, str(i + 1))
         os.makedirs(folder, exist_ok=True)
-        print("test_acc = {:.10e}, train_acc = {:.10e}, read_acc = {:.10e}".format(best[3], best_train[3], rest_accuracy))
+        print("test_acc = {:.10e}, train_acc = {:.10e}, rest_acc = {:.10e}".format(best[3], best_train[3], rest_accuracy))
+        print("test_loss = {:.10e}, train_loss = {:.10e}, rest_loss = {:.10e}".format(best[2], best_train[2], rest_loss))
         # torch.save(module.state_dict(), os.path.join(folder, "state_dict.pickle"))
         # np.savetxt(os.path.join(folder, "train_history.dat"), np.array(train_history))
         # np.savetxt(os.path.join(folder, "test_history.dat"), np.array(test_history))
