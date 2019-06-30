@@ -451,7 +451,7 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
             if self.type == 'phase':
                 if not apply_weights_loss:
                     return torch.mean(self._fn(predicted, expected))
-                return torch.sum(self._fn(predicted, expected) * weight)
+                return torch.sum(self._fn(predicted, expected) * weight[:, 0])
             else:
                 return self._fn(predicted, torch.log(weight))
 
@@ -478,7 +478,10 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
         if gpu:
             module = module.cuda()
             rest_set = (rest_set[0].cuda(), rest_set[1], rest_set[2])
-        rest_set = (rest_set[0], rest_set[1], rest_set[2] / torch.sum(rest_set[2]))
+        if sampling == "quadratic":
+            rest_set = (rest_set[0], rest_set[1], rest_set[2] / torch.sum(rest_set[2]))
+        else:
+            rest_set = (rest_set[0], rest_set[1], rest_set[2] * 0.0 + 1.0 / rest_set[2].size()[0])
         if train_options["type"] == "phase":
             predicted = torch.zeros([0, 2], dtype=torch.float32)
         else:
@@ -490,16 +493,15 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
                 predicted_local = module(rest_set[0][idxs]).cpu()
                 predicted = torch.cat((predicted, predicted_local), dim = 0)
 
-            if sampling == "uniform":
-                rest_loss = loss_fn(predicted, *rest_set[1:]).item()
-                rest_accuracy = accuracy(predicted, *rest_set[1:])
-            elif sampling == 'quadratic':
-                rest_loss = 0.0
-                rest_accuracy = 0.0
-                for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
-                    rest_loss += loss_fn(predicted[idxs], rest_set[1][idxs], rest_set[2][idxs], apply_weights_loss = True).item()
-                    rest_accuracy += accuracy(predicted[idxs], rest_set[1][idxs], rest_set[2][idxs], apply_weights_loss = True)  # rest accuracy and loss are computed with 
-        
+            rest_loss = 0.0
+            rest_accuracy = 0.0
+            for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
+                rest_loss += loss_fn(predicted[idxs], rest_set[1][idxs], rest_set[2][idxs], apply_weights_loss = True).item()
+                rest_accuracy += accuracy(predicted[idxs], rest_set[1][idxs], rest_set[2][idxs], apply_weights_loss = True)
+ 
+        #    rest_loss /= len(np.split(np.arange(size), np.arange(0, size, 10000))[1:])
+        #    if sampling == "uniform":
+        #        rest_accuracy /= len(np.split(np.arange(size), np.arange(0, size, 10000))[1:])
         best_overlap = overlap(train_options["type"], module, *dataset, gpu)
         print('total dataset overlap = ' + str(best_overlap))
 
