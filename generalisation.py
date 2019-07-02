@@ -603,7 +603,7 @@ def main():
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
-                        ("{:.3f} {:.3f}" + " {:.10e}" * 22 + "\n").format(j2, rt, *tuple(local_result))
+                        ("{:.3f} {:.5f}" + " {:.10e}" * 22 + "\n").format(j2, rt, *tuple(local_result))
                 )
     return
 
