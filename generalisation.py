@@ -73,6 +73,9 @@ def split_dataset(dataset, fractions, sampling='uniform'):
     if sampling == "quadratic":
         print("sampling with |A|^2 weights")
         weights = dataset[2] / torch.sum(dataset[2])
+    elif sampling == "log":
+        print("sampling with log|A|^2 weights")
+        weights = torch.log(dataset[2]) / torch.sum(torch.log(dataset[2]))
     else:
         print("sampling with uniform weights")
 
@@ -485,6 +488,8 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
             resampled_set = (resampled_set[0].cuda(), resampled_set[1], resampled_set[2])
         if sampling == "quadratic":
             rest_set = (rest_set[0], rest_set[1], rest_set[2] / torch.sum(rest_set[2]))
+        elif sampling == "log":
+            rest_set = (rest_set[0], rest_set[1], torch.log(rest_set[2]) / torch.sum(torch.log(rest_set[2])))
         else:
             rest_set = (rest_set[0], rest_set[1], rest_set[2] * 0.0 + 1.0 / rest_set[2].size()[0])
         if train_options["type"] == "phase":
@@ -517,7 +522,7 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
 
         if gpu:
             module = module.cpu()
-            if sampling == 'quadratic':
+            if sampling != 'uniform':
                 dataset = (dataset[0].cpu(), dataset[1], dataset[2])
         best = min(test_history, key=lambda t: t[2])
         best_train = min(train_history, key=lambda t: t[2])
