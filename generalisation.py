@@ -486,6 +486,8 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
             module = module.cuda()
             rest_set = (rest_set[0].cuda(), rest_set[1], rest_set[2])
             resampled_set = (resampled_set[0].cuda(), resampled_set[1], resampled_set[2])
+
+        rest_set_amplitudes = rest_set[2] / torch.sum(rest_set[2])
         if sampling == "quadratic":
             rest_set = (rest_set[0], rest_set[1], rest_set[2] / torch.sum(rest_set[2]))
         elif sampling == "log":
@@ -516,7 +518,7 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
         best_overlap = overlap(train_options["type"], module, *dataset, gpu)
         print('total dataset overlap = ' + str(best_overlap))
 
-        rest_overlap = overlap(train_options["type"], module, *rest_set, gpu)
+        rest_overlap = overlap(train_options["type"], module, rest_set[0], rest_set[1], rest_set_amplitudes, gpu)
         rest_overlaps.append(rest_overlap)
         print('rest dataset overlap = ' + str(rest_overlap))
 
