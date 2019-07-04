@@ -75,7 +75,7 @@ def split_dataset(dataset, fractions, sampling='uniform'):
         weights = dataset[2] / torch.sum(dataset[2])
     elif sampling == "log":
         print("sampling with log|A|^2 weights")
-        weights = torch.log(dataset[2]) / torch.sum(torch.log(dataset[2]))
+        weights = torch.log(dataset[2]) ** 2 / torch.sum(torch.log(dataset[2]) ** 2)
     else:
         print("sampling with uniform weights")
 
@@ -491,7 +491,7 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
         if sampling == "quadratic":
             rest_set = (rest_set[0], rest_set[1], rest_set[2] / torch.sum(rest_set[2]))
         elif sampling == "log":
-            rest_set = (rest_set[0], rest_set[1], torch.log(rest_set[2]) / torch.sum(torch.log(rest_set[2])))
+            rest_set = (rest_set[0], rest_set[1], torch.log(rest_set[2]) ** 2 / torch.sum(torch.log(rest_set[2]) ** 2))
         else:
             rest_set = (rest_set[0], rest_set[1], rest_set[2] * 0.0 + 1.0 / rest_set[2].size()[0])
         if train_options["type"] == "phase":
