@@ -333,7 +333,7 @@ def accuracy(predicted, expected, weight, apply_weights_loss = False):
     if not apply_weights_loss:
         return torch.sum(predicted == expected).item() / float(expected.size(0))
     agreement = predicted == expected
-    return torch.sum(agreement.type(torch.FloatTensor) * torch.tensor(weight, dtype = torch.float32)[:, 0] ).item()  # / float(expected.size(0))
+    return torch.sum(agreement.type(torch.FloatTensor) * torch.tensor(weight, dtype = torch.float32)[:, 0]).item()  # / float(expected.size(0))
  
 def overlap(train_type, ψ, samples, target, weights, gpu):
     if train_type == 'phase':
@@ -376,11 +376,10 @@ def overlap_phase(ψ, samples, target, weights, gpu):
             idx_max = len(samples)
         predicted_signs = torch.max(ψ(samples[idx_min:idx_max]), dim=1)[1].cpu().type(torch.FloatTensor)
         predicted_signs = 2.0 * predicted_signs.type(torch.FloatTensor) - 1.0
-        overlap += torch.sum(predicted_signs.type(torch.FloatTensor) * target[idx_min:idx_max].type(torch.FloatTensor) * weights[idx_min:idx_max].type(torch.FloatTensor)).item() / (idx_max - idx_min)
+        overlap += torch.sum(predicted_signs.type(torch.FloatTensor) * target[idx_min:idx_max].type(torch.FloatTensor) * weights[idx_min:idx_max].type(torch.FloatTensor)).item()
     if gpu:
         ψ = ψ.cpu()
         samples = samples.cpu()
-
     return overlap / torch.sum(weights).item()
 
 def load_dataset_TOM(dataset):
