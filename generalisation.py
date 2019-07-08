@@ -371,15 +371,12 @@ def overlap_phase(ψ, samples, target, weights, gpu):
         samples = samples.cuda()
     BATCH_SIZE = 1024
     overlap = 0.0
-    target = 2.0 * target.type(torch.FloatTensor) - 1.0
-    for i in range(int(samples.size()[0] / BATCH_SIZE) + 1):
-        idx_min = i * BATCH_SIZE
-        idx_max = (i + 1) * BATCH_SIZE
-        if idx_max > len(samples):
-            idx_max = len(samples)
-        predicted_signs = torch.max(ψ(samples[idx_min:idx_max]), dim=1)[1].cpu().type(torch.FloatTensor)
+    target_eval = 2.0 * target.type(torch.FloatTensor) - 1.0
+    size = samples.size()[0]
+    for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
+        predicted_signs = torch.max(ψ(samples[idxs]), dim=1)[1].cpu().type(torch.FloatTensor)
         predicted_signs = 2.0 * predicted_signs.type(torch.FloatTensor) - 1.0
-        overlap += torch.sum(predicted_signs.type(torch.FloatTensor) * target[idx_min:idx_max].type(torch.FloatTensor) * weights[idx_min:idx_max].type(torch.FloatTensor)).item()
+        overlap += torch.sum(predicted_signs.type(torch.FloatTensor) * target_eval[idxs].type(torch.FloatTensor) * weights[idxs].type(torch.FloatTensor)).item()
     if gpu:
         ψ = ψ.cpu()
         samples = samples.cpu()
@@ -515,7 +512,7 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
         #    if sampling == "uniform":
         #        rest_accuracy /= len(np.split(np.arange(size), np.arange(0, size, 10000))[1:])
         best_overlap = overlap(train_options["type"], module, *dataset, gpu)
-        print('total dataset overlap = ' + str(best_overlap))
+        print('total dataset overlap = ' + str(best_overlap) + 'total dataset accuracy = ' + str(rest_accuracy))
 
         rest_overlap = overlap(train_options["type"], module, rest_set[0], rest_set[1], rest_set_amplitudes, gpu)
         rest_overlaps.append(rest_overlap)
