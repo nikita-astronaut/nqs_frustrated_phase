@@ -369,14 +369,13 @@ def overlap_phase(ψ, samples, target, weights, gpu):
     if gpu:
         ψ = ψ.cuda()
         samples = samples.cuda()
-    BATCH_SIZE = 1024
     overlap = 0.0
     target_eval = 2.0 * target.type(torch.FloatTensor) - 1.0
     size = samples.size()[0]
     for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
         predicted_signs = torch.max(ψ(samples[idxs]), dim=1)[1].cpu().type(torch.FloatTensor)
         predicted_signs = 2.0 * predicted_signs.type(torch.FloatTensor) - 1.0
-        overlap += torch.sum(predicted_signs.type(torch.FloatTensor) * target_eval[idxs].type(torch.FloatTensor) * weights[idxs].type(torch.FloatTensor)).item()
+        overlap += torch.sum(predicted_signs.type(torch.float32) * target_eval[idxs].type(torch.FloatTensor) * weights[idxs, 0].type(torch.FloatTensor)).item()
     if gpu:
         ψ = ψ.cpu()
         samples = samples.cpu()
