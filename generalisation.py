@@ -348,22 +348,20 @@ def overlap_amplitude(ψ, samples, target, weights, gpu):
     if gpu:
         ψ = ψ.cuda()
         samples = samples.cuda()
-    BATCH_SIZE = 1024
     overlap = 0.0
-    normalisation = 0.0
-    for i in range(int(samples.size()[0] / BATCH_SIZE) + 1):
-        idx_min = i * BATCH_SIZE
-        idx_max = (i + 1) * BATCH_SIZE
-        if idx_max > len(samples):
-            idx_max = len(samples)
-        predicted_amplitudes = torch.exp(ψ(samples[idx_min:idx_max])).cpu().type(torch.FloatTensor)
-        overlap += torch.sum(torch.sqrt(predicted_amplitudes).type(torch.FloatTensor) * torch.sqrt(weights[idx_min:idx_max]).type(torch.FloatTensor)).item()
-        normalisation += torch.sum(torch.sqrt(predicted_amplitudes).type(torch.FloatTensor) * torch.sqrt(predicted_amplitudes).type(torch.FloatTensor)).item()
+    norm_bra = 0.0
+    norm_ket = 0.0
+    size = samples.size()[0]
+    for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
+        predicted_amplitudes = torch.exp(ψ(samples[idxs])).cpu().type(torch.FloatTensor)[:, 0]
+        overlap += torch.sum(torch.sqrt(predicted_amplitudes).type(torch.FloatTensor) * torch.sqrt(weights[idxs, 0]).type(torch.FloatTensor)).item()
+        norm_bra += torch.sum(predicted_amplitudes.type(torch.FloatTensor)).item()
+        norm_ket += torch.sum(weights[idxs, 0].type(torch.FloatTensor)).item()
     if gpu:
         ψ = ψ.cpu()
         samples = samples.cpu()
 
-    return overlap / np.sqrt(normalisation)
+    return overlap / np.sqrt(norm_bra) / np.sqrt(norm_ket)
 
 def overlap_phase(ψ, samples, target, weights, gpu):
     if gpu:
