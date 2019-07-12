@@ -123,12 +123,6 @@ def load_dataset_K(dataset):
     return dataset
 
 def main():
-    if not len(sys.argv) == 2:
-        print(
-            "Usage: python3 {} <path-to-json-config>".format(sys.argv[0]),
-            file=sys.stderr,
-        )
-        sys.exit(1)
     config = _with_file_like(sys.argv[1], "r", json.load)
     system_folder = config["system"]
     lrs = config.get("lr")
@@ -154,10 +148,10 @@ def main():
     plt.legend(loc='upper left')
     plt.grid(True)
     plt.xlim([0.6, 1])
-    # plt.yscale('log')
+    plt.xscale('log')
     plt.xlabel('states fraction')
     plt.ylabel('total weight')
-    plt.savefig('triangle_fraction.pdf')
+    plt.savefig(sys.argv[2])
     return
 
 
