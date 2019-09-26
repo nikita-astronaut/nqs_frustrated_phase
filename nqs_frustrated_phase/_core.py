@@ -285,7 +285,7 @@ def make_hamiltonian(edges, number_of_spins=None):
         if number_of_spins is not None
         else deduce_number_of_spins(edges)
     )
-    edges = np.array(edges)
+    edges = np.array(edges, dtype=np.int64).reshape(-1, 2)
     # List of all spins within a sector with a certain magnetisation
     magnetisation = n % 2
     number_ups = (n + magnetisation) // 2
