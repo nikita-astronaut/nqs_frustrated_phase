@@ -24,6 +24,16 @@ import scipy.io as sio
 from scipy.special import comb
 from itertools import combinations
 
+number_spins = None
+
+def index_to_spin(index):
+    global number_spins
+    """
+    Generates spins out of indexes given the total spin number
+    P.S. Can be slow, but intuitive (I believe that the bottleneck is not here)
+    """
+    return (((d[:, None] & (1 << np.arange(number_spins)))) > 0).astype(int) * 2. - 1.
+
 # "Borrowed" from pytorch/torch/serialization.py.
 # All credit goes to PyTorch developers.
 def _with_file_like(f, mode, body):
@@ -215,6 +225,7 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
                 losses = []
                 accuracies = []
             for batch_index, (batch_x, batch_y, batch_weight) in enumerate(dataloader):
+                batch_x = index_to_spin(batch_x)  # move this to GPU? use cuPY
                 if gpu:
                     batch_x, batch_y, batch_weight = batch_x.cuda(), batch_y.cuda(), batch_weight.cuda()
                 optimiser.zero_grad()
@@ -381,6 +392,7 @@ def overlap_phase(ψ, samples, target, weights, gpu):
 
 def load_dataset_TOM(dataset):
     # Load the dataset using pickle
+    # it is expected that dataset[0] is the array of integers (n < 2 ** 30)! (not of spin configurations)
     dataset = tuple(
         torch.from_numpy(x) for x in _with_file_like(dataset, "rb", pickle.load)
     )
@@ -549,6 +561,7 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
 
 
 def main():
+    global number_spins
     if not len(sys.argv) == 2:
         print(
             "Usage: python3 {} <path-to-json-config>".format(sys.argv[0]),
