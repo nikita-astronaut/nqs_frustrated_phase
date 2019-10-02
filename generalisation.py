@@ -35,8 +35,7 @@ def index_to_spin(index):
     P.S. Can be slow, but intuitive (I believe that the bottleneck is not here)
     """
 
-    print(index.numpy())
-    return torch.from_numpy((((index.numpy()[:, None] & (1 << np.arange(number_spins)))) > 0).astype(int) * 2. - 1.)
+    return torch.from_numpy((((index.numpy()[:, None] & (1 << np.arange(number_spins)))) > 0).astype(int) * 2. - 1.).type(torch.FloatTensor)
 
 # "Borrowed" from pytorch/torch/serialization.py.
 # All credit goes to PyTorch developers.
@@ -248,7 +247,7 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
                     accuracies.append(accuracy)
                 if update_count % check_frequency == 0:
                     with torch.no_grad():
-                        predicted = ψ(test_x)
+                        predicted = ψ(index_to_spin(test_x))
                         loss = loss_fn(predicted, test_y, test_weight).item()
                         accuracy = accuracy_fn(predicted, test_y, test_weight)
                     early_stopping(loss, ψ)
