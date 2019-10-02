@@ -247,9 +247,9 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
                     accuracies.append(accuracy)
                 if update_count % check_frequency == 0:
                     with torch.no_grad():
-                        predicted = ψ(index_to_spin(test_x).cuda())
-                        loss = loss_fn(predicted, test_y.cuda(), test_weight.cuda()).item()
-                        accuracy = accuracy_fn(predicted, test_y.cuda(), test_weight.cuda())
+                        predicted = predict_large_data(ψ, index_to_spin(test_x), gpu, config["type"], no_model_movement = True)
+                        loss = loss_fn(predicted, test_y, test_weight).item()
+                        accuracy = accuracy_fn(predicted, test_y, test_weight)
                     early_stopping(loss, ψ)
                     test_loss_history.append(
                         (update_count, epoch_index, loss, accuracy)
@@ -293,6 +293,23 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
     if gpu:
         ψ = ψ.cpu()
     return ψ, train_loss_history, test_loss_history
+
+def predict_large_data(model, dataset_x, gpu, train_type, no_model_movement = False):
+    size = dataset_x.size()[0]
+    if train_type == "phase":
+        result = torch.zeros((size, 2)).type(torch.FloatTensor)
+    else:
+        result = torch.zeros((size, 1)).type(torch.FloatTensor)
+    if gpu:
+        model = model.cuda()
+    
+    size = dataset_x.size()[0]
+    for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
+        predicted = torch.squeeze(model(dataset_x[idxs].cuda()).cpu()).type(torch.FloatTensor)
+        result[idxs, :] = predicted
+    if gpu and not no_model_movement:
+        model = model.cpu()
+    return result
 
 
 def import_network(filename: str):
@@ -461,16 +478,9 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
             rest_set = (rest_set[0], rest_set[1], torch.log(rest_set[2]) ** 2 / torch.sum(torch.log(rest_set[2]) ** 2))
         else:
             rest_set = (rest_set[0], rest_set[1], rest_set[2] * 0.0 + 1.0 / rest_set[2].size()[0])
-        if train_options["type"] == "phase":
-            predicted = torch.zeros([0, 2], dtype=torch.float32)
-        else:
-            predicted = torch.zeros([0, 1], dtype=torch.float32)
-
-        with torch.no_grad():
-            size = rest_set[0].size()[0]
-            for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
-                predicted_local = module(rest_set[0][idxs]).cpu()
-                predicted = torch.cat((predicted, predicted_local), dim = 0)
+        
+        with torch.no_drad():
+            predicted = predict_large_data(module, rest_set[0], gpu, train_options["type"])
 
             rest_loss = 0.0
             rest_accuracy = 0.0
@@ -479,9 +489,6 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
                 rest_accuracy += accuracy(predicted[idxs], rest_set[1][idxs], rest_set[2][idxs], apply_weights_loss = True)
             resampled_loss = loss_fn(module(resampled_set[0]).cpu(), resampled_set[1], resampled_set[2]).item()
             resampled_acc = accuracy(module(resampled_set[0]).cpu(), resampled_set[1], resampled_set[2])
-        #    rest_loss /= len(np.split(np.arange(size), np.arange(0, size, 10000))[1:])
-        #    if sampling == "uniform":
-        #        rest_accuracy /= len(np.split(np.arange(size), np.arange(0, size, 10000))[1:])
         best_overlap = overlap(train_options["type"], module, *dataset, gpu)
         print('total dataset overlap = ' + str(best_overlap) + 'total dataset accuracy = ' + str(rest_accuracy))
 
