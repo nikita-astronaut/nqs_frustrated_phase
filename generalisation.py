@@ -247,9 +247,9 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
                     accuracies.append(accuracy)
                 if update_count % check_frequency == 0:
                     with torch.no_grad():
-                        predicted = ψ(index_to_spin(test_x))
-                        loss = loss_fn(predicted, test_y, test_weight).item()
-                        accuracy = accuracy_fn(predicted, test_y, test_weight)
+                        predicted = ψ(index_to_spin(test_x).cuda())
+                        loss = loss_fn(predicted, test_y.cuda(), test_weight.cuda()).item()
+                        accuracy = accuracy_fn(predicted, test_y.cuda(), test_weight.cuda())
                     early_stopping(loss, ψ)
                     test_loss_history.append(
                         (update_count, epoch_index, loss, accuracy)
