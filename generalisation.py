@@ -16,6 +16,7 @@ import tempfile
 import time
 from typing import Dict, List, Tuple, Optional
 
+import scipy
 import numpy as np
 import torch
 import torch.utils.data
@@ -23,7 +24,8 @@ import torch.utils.data
 import scipy.io as sio
 from scipy.special import comb
 from itertools import combinations
-
+from nqs_frustrated_phase.hphi import load_eigenvector
+from nqs_frustrated_phase._core import sector
 number_spins = None
 
 def index_to_spin(index):
@@ -32,7 +34,9 @@ def index_to_spin(index):
     Generates spins out of indexes given the total spin number
     P.S. Can be slow, but intuitive (I believe that the bottleneck is not here)
     """
-    return (((d[:, None] & (1 << np.arange(number_spins)))) > 0).astype(int) * 2. - 1.
+
+    print(index.numpy())
+    return torch.from_numpy((((index.numpy()[:, None] & (1 << np.arange(number_spins)))) > 0).astype(int) * 2. - 1.)
 
 # "Borrowed" from pytorch/torch/serialization.py.
 # All credit goes to PyTorch developers.
@@ -92,7 +96,7 @@ def split_dataset(dataset, fractions, sampling='uniform'):
     if weights is None:
         indices = torch.randperm(n)
     else:
-        indices = np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=False, p=weights.numpy()[:,0])
+        indices = np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=False, p=weights.numpy())
         indices = torch.from_numpy(np.concatenate([indices, np.setdiff1d(np.arange(n), indices)], axis = 0))
 
     sets = []
@@ -203,8 +207,8 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
     print_info("Training on {} spin configurations...".format(train_set[0].size(0)))
     start = time.time()
     test_x, test_y, test_weight = test_set
-    if gpu:
-        test_x, test_y, test_weight = test_x.cuda(), test_y.cuda(), test_weight.cuda()
+#     if gpu:
+#         test_x, test_y, test_weight = test_x.cuda(), test_y.cuda(), test_weight.cuda()
     dataloader = torch.utils.data.DataLoader(
         torch.utils.data.TensorDataset(*train_set),
         batch_size=config["batch_size"],
@@ -225,7 +229,7 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
                 losses = []
                 accuracies = []
             for batch_index, (batch_x, batch_y, batch_weight) in enumerate(dataloader):
-                batch_x = index_to_spin(batch_x)  # move this to GPU? use cuPY
+                batch_x = index_to_spin(batch_x)
                 if gpu:
                     batch_x, batch_y, batch_weight = batch_x.cuda(), batch_y.cuda(), batch_weight.cuda()
                 optimiser.zero_grad()
@@ -315,20 +319,6 @@ def import_network(filename: str):
     return module.Net
 
 
-def get_info(system_folder, j2=None, rt=None):
-    if not os.path.exists(os.path.join(system_folder, "info.json")):
-        raise ValueError(
-            "Could not find {!r} in the system directory {!r}".format(
-                "info.json", system_folder
-            )
-        )
-    with open(os.path.join(system_folder, "info.json"), "r") as input:
-        info = json.load(input)
-    if j2 is not None:
-        info = [x for x in info if x["j2"] in j2]
-    return info
-
-
 def get_number_spins(config):
     number_spins = config.get("number_spins")
     if number_spins is not None:
@@ -390,60 +380,33 @@ def overlap_phase(ψ, samples, target, weights, gpu):
         samples = samples.cpu()
     return overlap / torch.sum(weights).item()
 
-def load_dataset_TOM(dataset):
-    # Load the dataset using pickle
-    # it is expected that dataset[0] is the array of integers (n < 2 ** 30)! (not of spin configurations)
-    dataset = tuple(
-        torch.from_numpy(x) for x in _with_file_like(dataset, "rb", pickle.load)
-    )
-    
-    # Pre-processing
+def load_dataset_large(dataset_name):
+    global number_spins
+    magnetisation = number_spins % 2
+    number_ups = (number_spins + magnetisation) // 2
+    shift = number_ups * (number_ups - 1) // 2 if number_ups > 0 else 0
+    all_spins = np.fromiter(
+        sector(number_spins, magnetisation),
+        dtype=np.uint64,
+        count=int(scipy.special.comb(number_spins, number_ups)),
+    ).astype(np.int64)
+
+    all_amplitudes = torch.from_numpy(load_eigenvector(dataset_name))
+
     dataset = (
-        dataset[0],
-        torch.where(dataset[1] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
-        torch.abs(dataset[1]) ** 2,
+        torch.from_numpy(all_spins),
+        torch.where(all_amplitudes >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
+        torch.abs(all_amplitudes) ** 2,
     )
+
+
+    print(dataset[0])
     return dataset
 
-def load_dataset_K(dataset):
-    print("load")
-    # Load the dataset and basis
-    mat = sio.loadmat(dataset)
-    dataset = dataset.split("_");
-    dataset[1] = "basis"; 
-    basis = "_".join(dataset[:2]+dataset[-2:])[:-4]
-    basis = _with_file_like(basis, "rb", pickle.load)
 
-    print("construction")
-    # Construction of full basis
-    psi = np.ones((comb(basis.N,basis.N//2,exact=True),basis.N), dtype=np.float32)
-    for ix, item in enumerate(combinations(range(basis.N), basis.N//2)):
-        psi[ix,item] = -1
-
-    print("expansion")
-    # Expansion of eigenstate
-    phi = basis.get_vec(mat['psi'][:,0], sparse = False, pcon=True).astype(np.float32)    
-    
-    dataset = (psi, phi)
-    
-    dataset = tuple(
-        torch.from_numpy(x) for x in dataset
-    )
-    # Pre-processing
-    dataset = (
-        dataset[0],
-        torch.where(dataset[1] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
-        (torch.abs(dataset[1]) ** 2).unsqueeze(1),
-    )
-    return dataset
-    
-def try_one_dataset(dataset, output, Net, number_runs, number_best, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
-    if dataset.endswith("pickle"):
-        dataset = load_dataset_TOM(dataset)
-    elif dataset.endswith("mat"):
-        dataset = load_dataset_K(dataset)
-    else:
-        raise Exception('dataset should be either *.mat or *.pickle file, received: '+dataset)
+def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
+    global number_spins
+    dataset = load_dataset_large(dataset_name)
 
     weights = None
 
@@ -474,7 +437,7 @@ def try_one_dataset(dataset, output, Net, number_runs, number_best, train_option
     stats = []
     rest_overlaps = []
     for i in range(number_runs):
-        module = Net(dataset[0].size(1))
+        module = Net(number_spins)
         train_set, test_set, rest_set = split_dataset(
             dataset, [rt, train_options["test_fraction"]], sampling = sampling
         )
@@ -577,7 +540,7 @@ def main():
     gpu = config["gpu"]
     sampling = config["sampling"]
     lrs = config.get("lr")
-    info = get_info(system_folder, config.get("j2"))
+    j2_list = config.get("j2")
     Net = import_network(config["model"])
     if config["use_jit"]:
         _dummy_copy_of_Net = Net
@@ -604,15 +567,14 @@ def main():
             "<resampled_accuracy> <resampled_accuracy_err>"
             " <total_overlap> <total_overlap_err> <rest_overlap> <rest_overlap_err> <total_expr> <total_acc> \n")
 
-    for _obj,lr in zip(info, lrs):
+    for j2, lr in zip(j2_list, lrs):
         for rt in config.get("train_fractions"):
-            j2 = _obj["j2"]
- 
-            dataset = _obj["dataset"]
+            dataset_name = os.path.join(config['system'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
+            print(j2)
             local_result = try_one_dataset(
-                dataset, local_output, Net, number_runs, number_best, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
+                dataset_name, local_output, Net, number_runs, number_best, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
