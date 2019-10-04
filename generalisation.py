@@ -221,7 +221,7 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
 
 
     def training_loop():
-        update_count = 0
+        update_count = -1
         for epoch_index in range(epochs):
             important = epoch_index in checkpoints
             if important:
@@ -247,7 +247,7 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
                     accuracies.append(accuracy)
                 if update_count % check_frequency == 0:
                     with torch.no_grad():
-                        predicted = predict_large_data(ψ, index_to_spin(test_x), gpu, config["type"], no_model_movement = True)
+                        predicted = predict_large_data(ψ, test_x, gpu, config["type"], no_model_movement = True)
                         loss = loss_fn(predicted, test_y, test_weight).item()
                         accuracy = accuracy_fn(predicted, test_y, test_weight)
                     early_stopping(loss, ψ)
@@ -305,7 +305,7 @@ def predict_large_data(model, dataset_x, gpu, train_type, no_model_movement = Fa
     
     size = dataset_x.size()[0]
     for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
-        predicted = torch.squeeze(model(dataset_x[idxs].cuda()).cpu()).type(torch.FloatTensor)
+        predicted = torch.squeeze(model(index_to_spin(dataset_x[idxs]).cuda()).cpu()).type(torch.FloatTensor)
         result[idxs, ...] = predicted
     if gpu and not no_model_movement:
         model = model.cpu()
@@ -353,7 +353,7 @@ def accuracy(predicted, expected, weight, apply_weights_loss = False):
     if not apply_weights_loss:
         return torch.sum(predicted == expected).item() / float(expected.size(0))
     agreement = predicted == expected
-    return torch.sum(agreement.type(torch.FloatTensor) * torch.tensor(weight, dtype = torch.float32)[:, 0]).item()  # / float(expected.size(0))
+    return torch.sum(agreement.type(torch.FloatTensor) * torch.tensor(weight, dtype = torch.float32)).item()  # / float(expected.size(0))
  
 def overlap(train_type, ψ, samples, target, weights, gpu):
     if train_type == 'phase':
@@ -362,7 +362,7 @@ def overlap(train_type, ψ, samples, target, weights, gpu):
         return overlap_amplitude(ψ, samples, target, weights, gpu)
 
 def overlap_amplitude(ψ, samples, target, weights, gpu):
-    predicted_amplitudes = predict_large_data(ψ, index_to_spin(samples), gpu, "amplitude")
+    predicted_amplitudes = predict_large_data(ψ, samples, gpu, "amplitude")
     overlap = torch.sum(torch.sqrt(predicted_amplitudes) * torch.sqrt(weights[:, 0])).item()
     norm_bra = torch.sum(predicted_amplitudes).item()
     norm_ket = torch.sum(weights[:, 0]).item()
@@ -370,9 +370,9 @@ def overlap_amplitude(ψ, samples, target, weights, gpu):
     return overlap / np.sqrt(norm_bra) / np.sqrt(norm_ket)
 
 def overlap_phase(ψ, samples, target, weights, gpu):
-    predicted_signs = 2.0 * torch.max(predict_large_data(ψ, index_to_spin(samples), gpu, "phase"), dim=1)[1] - 1.0
+    predicted_signs = 2.0 * torch.max(predict_large_data(ψ, samples, gpu, "phase"), dim=1)[1] - 1.0
     target_signs = 2.0 * target - 1.0
-    overlap = torch.sum(predicted_signs * target_signs * weights[:, 0]).item()
+    overlap = torch.sum(predicted_signs.type(torch.FloatTensor) * target_signs.type(torch.FloatTensor) * weights.type(torch.FloatTensor)).item()
     return overlap / torch.sum(weights).item()
 
 def load_dataset_large(dataset_name):
@@ -416,7 +416,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
             if self.type == 'phase':
                 if not apply_weights_loss:
                     return torch.mean(self._fn(predicted, expected))
-                return torch.sum(self._fn(predicted, expected) * weight[:, 0])
+                return torch.sum(self._fn(predicted, expected) * weight)
             else:
                 return self._fn(predicted, torch.log(weight))
 
@@ -455,18 +455,19 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
         
         with torch.no_grad():
             predicted_rest = predict_large_data(module, rest_set[0], gpu, train_options["type"])
-            predicted_resampled = predict_large_data(module, resamples_set[0], gpu, train_options["type"])
+            predicted_resampled = predict_large_data(module, resampled_set[0], gpu, train_options["type"])
 
             rest_loss = loss_fn(predicted_rest, rest_set[1], rest_set[2], apply_weights_loss = True).item()
             rest_accuracy = accuracy(predicted_rest, rest_set[1], rest_set[2], apply_weights_loss = True)
             resampled_loss = loss_fn(predicted_resampled, resampled_set[1], resampled_set[2]).item()
             resampled_acc = accuracy(predicted_resampled, resampled_set[1], resampled_set[2])
-        best_overlap = overlap(train_options["type"], module, *dataset, gpu)
-        print('total dataset overlap = ' + str(best_overlap) + 'total dataset accuracy = ' + str(rest_accuracy))
+        
+            best_overlap = overlap(train_options["type"], module, *dataset, gpu)
+            print('total dataset overlap = ' + str(best_overlap) + 'total dataset accuracy = ' + str(rest_accuracy))
 
-        rest_overlap = overlap(train_options["type"], module, rest_set[0], rest_set[1], rest_set_amplitudes, gpu)
-        rest_overlaps.append(rest_overlap)
-        print('rest dataset overlap = ' + str(rest_overlap))
+            rest_overlap = overlap(train_options["type"], module, rest_set[0], rest_set[1], rest_set_amplitudes, gpu)
+            rest_overlaps.append(rest_overlap)
+            print('rest dataset overlap = ' + str(rest_overlap))
 
         if gpu:
             module = module.cpu()

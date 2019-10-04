@@ -1,0 +1,25 @@
+{
+    "number_spins" : 30,
+    "system": "/zfs/hybrilit.jinr.ru/user/a/astrakh/nqs_frustrated_phase/data/square/30/",
+    "model": "/zfs/hybrilit.jinr.ru/user/a/astrakh/nqs_frustrated_phase/models/conv_model_30.py",
+    "output": "/zfs/hybrilit.jinr.ru/user/a/astrakh/nqs_frustrated_phase/workdir/square/30/conv/wip_square_quadratic_phase_conv",
+    "j2" : [0.0],
+    "lr" : [1e-3], 
+    "number_runs": 4,
+    "number_best": 2,
+    "use_jit": true,
+    "sampling" : "quadratic",
+    "gpu" : true,
+    "train_fractions" : [0.001],
+    "training": {
+        "type": "phase",
+        "test_fraction": 0.002,
+        "epochs": 400,
+        "batch_size": 128,
+        "frequency": 10000,
+        "patience": 1000,
+        "optimiser": "lambda m: torch.optim.Adam(m.parameters())",
+        "load_best": true,
+        "verbose": true
+    }
+}
