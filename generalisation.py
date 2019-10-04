@@ -250,7 +250,7 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
                         predicted = predict_large_data(ψ, test_x, gpu, config["type"], no_model_movement = True)
                         loss = loss_fn(predicted, test_y, test_weight).item()
                         accuracy = accuracy_fn(predicted, test_y, test_weight)
-                        print('test loss = {:3d}, test accuracy = {:3d}'.format(loss, accuracy))
+                        print('test loss = {:.3e}, test accuracy = {:.3e}'.format(loss, accuracy))
                     early_stopping(loss, ψ)
                     test_loss_history.append(
                         (update_count, epoch_index, loss, accuracy)
