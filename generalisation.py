@@ -223,7 +223,6 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
     def training_loop():
         update_count = 0
         for epoch_index in range(epochs):
-            print('epoch number = ' + str(epoch_index), flush = True)
             important = epoch_index in checkpoints
             if important:
                 losses = []
@@ -396,7 +395,6 @@ def load_dataset_large(dataset_name):
     )
 
 
-    print(dataset[0])
     return dataset
 
 
@@ -455,7 +453,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
         else:
             rest_set = (rest_set[0], rest_set[1], rest_set[2] * 0.0 + 1.0 / rest_set[2].size()[0])
         
-        with torch.no_drad():
+        with torch.no_grad():
             predicted_rest = predict_large_data(module, rest_set[0], gpu, train_options["type"])
             predicted_resampled = predict_large_data(module, resamples_set[0], gpu, train_options["type"])
 
