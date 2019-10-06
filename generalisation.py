@@ -546,6 +546,7 @@ def main():
             "<resampled_loss> <resampled_loss_err> "
             "<resampled_accuracy> <resampled_accuracy_err>"
             " <total_overlap> <total_overlap_err> <rest_overlap> <rest_overlap_err> <total_expr> <total_acc> \n")
+    results_file.flush()
 
     for j2, lr in zip(j2_list, lrs):
         for rt in config.get("train_fractions"):
@@ -560,6 +561,7 @@ def main():
                 results_file.write(
                         ("{:.3f} {:.5f}" + " {:.10e}" * 22 + "\n").format(j2, rt, *tuple(local_result))
                 )
+                results_file.flush()
     return
 
 
