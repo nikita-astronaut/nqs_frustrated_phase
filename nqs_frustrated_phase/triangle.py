@@ -285,7 +285,7 @@ class TrianglePeriodic24(System):
 
 class TrianglePeriodic30(System):
 
-    POSITIONS = [(i, j) for i in range(6) for j in range(4)]
+    POSITIONS = [(i, j) for i in range(6) for j in range(5)]
 
     J1_EDGES = [
         (0, 1),
