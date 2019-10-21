@@ -90,4 +90,6 @@ class Square24(System):
 class Square30(System):
     POSITIONS = [(i, j) for i in range(6) for j in range(5)]
     J1_EDGES, J2_EDGES = make_j1j2_graph(6, 5)
-
+class Square36(System):
+    POSITIONS = [(i, j) for i in range(6) for j in range(6)]
+    J1_EDGES, J2_EDGES = make_j1j2_graph(6, 6)
