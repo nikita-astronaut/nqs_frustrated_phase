@@ -290,12 +290,13 @@ def make_hamiltonian(edges, number_of_spins=None):
     magnetisation = n % 2
     number_ups = (n + magnetisation) // 2
     shift = number_ups * (number_ups - 1) // 2 if number_ups > 0 else 0
+    print(sector(n, magnetisation))
     all_spins = np.fromiter(
         sector(n, magnetisation),
         dtype=np.uint64,
         count=int(scipy.special.comb(n, number_ups)),
     )
-
+    print(all_spins, all_spins.shape)
     # if 2 ** n > 134217728:
     #     g_to_l = dict(((s, i) for i, s in enumerate(all_spins)))
     # else:

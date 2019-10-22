@@ -86,9 +86,6 @@ def split_dataset(dataset, fractions, sampling='uniform'):
     if sampling == "quadratic":
         print("sampling with |A|^2 weights")
         weights = dataset[2] / torch.sum(dataset[2])
-    elif sampling == "log":
-        print("sampling with log|A|^2 weights")
-        weights = torch.log(dataset[2]) ** 2 / torch.sum(torch.log(dataset[2]) ** 2)
     else:
         print("sampling with uniform weights")
 
@@ -206,8 +203,8 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
     print_info("Training on {} spin configurations...".format(train_set[0].size(0)))
     start = time.time()
     test_x, test_y, test_weight = test_set
-#     if gpu:
-#         test_x, test_y, test_weight = test_x.cuda(), test_y.cuda(), test_weight.cuda()
+    
+
     dataloader = torch.utils.data.DataLoader(
         torch.utils.data.TensorDataset(*train_set),
         batch_size=config["batch_size"],
@@ -364,14 +361,15 @@ def overlap(train_type, ψ, samples, target, weights, gpu):
 
 def overlap_amplitude(ψ, samples, target, weights, gpu):
     predicted_amplitudes = predict_large_data(ψ, samples, gpu, "amplitude")
-    overlap = torch.sum(torch.sqrt(predicted_amplitudes) * torch.sqrt(weights[:, 0])).item()
-    norm_bra = torch.sum(predicted_amplitudes).item()
-    norm_ket = torch.sum(weights[:, 0]).item()
+    overlap = torch.sum(torch.sqrt(predicted_amplitudes.type(torch.FloatTensor)) * torch.sqrt(weights)).item()
+    norm_bra = torch.sum(predicted_amplitudes.type(torch.FloatTensor)).item()
+    norm_ket = torch.sum(weights).item()
 
     return overlap / np.sqrt(norm_bra) / np.sqrt(norm_ket)
 
 def overlap_phase(ψ, samples, target, weights, gpu):
     predicted_signs = 2.0 * torch.max(predict_large_data(ψ, samples, gpu, "phase"), dim=1)[1] - 1.0
+    print(predicted_signs.size(), flush = True)
     target_signs = 2.0 * target - 1.0
     overlap = torch.sum(predicted_signs.type(torch.FloatTensor) * target_signs.type(torch.FloatTensor) * weights.type(torch.FloatTensor)).item()
     return overlap / torch.sum(weights).item()
@@ -436,7 +434,6 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
         train_set, test_set, rest_set = split_dataset(
             dataset, [rt, train_options["test_fraction"]], sampling = sampling
         )
-
         module, train_history, test_history = train(
             module, train_set, test_set, gpu, lr, **train_options
         )
