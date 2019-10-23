@@ -350,9 +350,9 @@ def load_dataset_K(dataset):
     # Load the dataset and basis
     mat = sio.loadmat(dataset)
     print(mat)
-    dataset = dataset.split("_");
+    dataset = dataset.split("--");
     dataset[1] = "basis";
-    basis = "_".join(dataset[:2]+dataset[-2:])[:-4]
+    basis = "--".join(dataset[:2]+dataset[-2:])[:-4]
     print(basis)
     basis = _with_file_like(basis, "rb", pickle.load)
 
@@ -433,9 +433,12 @@ def load_dataset_large(dataset_name):
 
 def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
     global number_spins
-    dataset = load_dataset_K(dataset_name)
-    # dataset = load_dataset_large(dataset_name)
+    dataset_K = load_dataset_K(dataset_name[0])
+    dataset_hphi = load_dataset_large(dataset_name[1])
 
+    overlap = torch.sum(torch.sqrt(dataset_K[2]) * torch.sqrt(dataset_hphi[2]) * (2. * dataset_K[1] - 1) * (2. * dataset_hphi[1] - 1) / torch.sqrt(torch.sum(dataset_K[2])) / torch.sqrt(torch.sum(dataset_hphi[2])))
+    print('overlap = ' + str(overlap))
+    exit(-1)
     weights = None
 
     class Loss(object):
@@ -582,13 +585,13 @@ def main():
 
     for j2, lr in zip(j2_list, lrs):
         for rt in config.get("train_fractions"):
-            #dataset_name = os.path.join(config['system'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')
-            dataset_name = config['system']
+            dataset_name_hphi = os.path.join(config['system_hphi'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')
+            dataset_name_K = config['system_K']
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
             print(j2)
             local_result = try_one_dataset(
-                dataset_name, local_output, Net, number_runs, number_best, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
+                [dataset_name_hphi, dataset_name_K], local_output, Net, number_runs, number_best, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
