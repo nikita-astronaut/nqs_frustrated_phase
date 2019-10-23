@@ -345,6 +345,40 @@ def get_number_spins(config):
         )
     return int(match.group(2))
 
+def load_dataset_K(dataset):
+    print("load")
+    # Load the dataset and basis
+    mat = sio.loadmat(dataset)
+    print(mat)
+    dataset = dataset.split("_");
+    dataset[1] = "basis";
+    basis = "_".join(dataset[:2]+dataset[-2:])[:-4]
+    print(basis)
+    basis = _with_file_like(basis, "rb", pickle.load)
+
+    print("construction")
+    # Construction of full basis
+    psi = np.ones((comb(basis.N,basis.N//2,exact=True),basis.N), dtype=np.float32)
+    for ix, item in enumerate(combinations(range(basis.N), basis.N//2)):
+        psi[ix,item] = -1
+
+    print("expansion")
+    # Expansion of eigenstate
+    phi = basis.get_vec(mat['psi'][:,0], sparse = False, pcon=True).astype(np.float32)
+
+    dataset = (psi, phi)
+
+    dataset = tuple(
+        torch.from_numpy(x) for x in dataset
+    )
+    # Pre-processing
+    dataset = (
+        dataset[0],
+        torch.where(dataset[1] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
+        (torch.abs(dataset[1]) ** 2).unsqueeze(1),
+    )
+    return dataset
+
 
 def accuracy(predicted, expected, weight, apply_weights_loss = False):
     predicted = torch.max(predicted, dim=1)[1]
@@ -399,7 +433,8 @@ def load_dataset_large(dataset_name):
 
 def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
     global number_spins
-    dataset = load_dataset_large(dataset_name)
+    dataset = load_dataset_K(dataset_name)
+    # dataset = load_dataset_large(dataset_name)
 
     weights = None
 
@@ -547,7 +582,8 @@ def main():
 
     for j2, lr in zip(j2_list, lrs):
         for rt in config.get("train_fractions"):
-            dataset_name = os.path.join(config['system'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')
+            #dataset_name = os.path.join(config['system'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')
+            dataset_name = config['system']
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
             print(j2)
