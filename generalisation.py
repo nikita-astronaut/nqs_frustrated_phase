@@ -346,6 +346,11 @@ def get_number_spins(config):
     return int(match.group(2))
 
 def load_dataset_K(dataset):
+    global number_spins
+    magnetisation = number_spins % 2
+    number_ups = (number_spins + magnetisation) // 2
+    shift = number_ups * (number_ups - 1) // 2 if number_ups > 0 else 0
+
     print("load")
     # Load the dataset and basis
     print(dataset)
@@ -357,26 +362,22 @@ def load_dataset_K(dataset):
     print(basis)
     basis = _with_file_like(basis, "rb", pickle.load)
 
-    print("construction")
-    # Construction of full basis
-    psi = np.ones((comb(basis.N,basis.N//2,exact=True),basis.N), dtype=np.float32)
-    for ix, item in enumerate(combinations(range(basis.N), basis.N//2)):
-        psi[ix,item] = -1
+    all_spins = np.fromiter(
+        sector(number_spins, magnetisation),
+        dtype=np.uint64,
+        count=int(scipy.special.comb(number_spins, number_ups)),
+    ).astype(np.int64)    
 
     print("expansion")
     # Expansion of eigenstate
     phi = basis.get_vec(mat['psi'][:,0], sparse = False, pcon=True).astype(np.float32)
 
-    dataset = (psi, phi)
-
-    dataset = tuple(
-        torch.from_numpy(x) for x in dataset
-    )
+    dataset = torch.from_numpy(phi)
     # Pre-processing
     dataset = (
-        dataset[0],
-        torch.where(dataset[1] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze().type(torch.FloatTensor),
-        (torch.abs(dataset[1]) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
+        torch.from_numpy(all_spins),
+        torch.where(dataset >= 0, torch.tensor([0]), torch.tensor([1])).squeeze().type(torch.FloatTensor),
+        (torch.abs(dataset) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
     )
     return dataset
 
