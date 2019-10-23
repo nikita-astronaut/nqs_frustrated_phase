@@ -348,6 +348,7 @@ def get_number_spins(config):
 def load_dataset_K(dataset):
     print("load")
     # Load the dataset and basis
+    print(dataset)
     mat = sio.loadmat(dataset)
     print(mat)
     dataset = dataset.split("--");
@@ -374,8 +375,8 @@ def load_dataset_K(dataset):
     # Pre-processing
     dataset = (
         dataset[0],
-        torch.where(dataset[1] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
-        (torch.abs(dataset[1]) ** 2).unsqueeze(1),
+        torch.where(dataset[1] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze().type(torch.FloatTensor),
+        (torch.abs(dataset[1]) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
     )
     return dataset
 
@@ -423,8 +424,8 @@ def load_dataset_large(dataset_name):
 
     dataset = (
         torch.from_numpy(all_spins),
-        torch.where(all_amplitudes >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
-        torch.abs(all_amplitudes) ** 2,
+        torch.where(all_amplitudes >= 0, torch.tensor([0]), torch.tensor([1])).squeeze().type(torch.FloatTensor),
+        (torch.abs(all_amplitudes) ** 2).type(torch.FloatTensor),
     )
 
 
@@ -433,8 +434,10 @@ def load_dataset_large(dataset_name):
 
 def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
     global number_spins
-    dataset_K = load_dataset_K(dataset_name[0])
-    dataset_hphi = load_dataset_large(dataset_name[1])
+    dataset_K = load_dataset_K(dataset_name[1])
+    dataset_hphi = load_dataset_large(dataset_name[0])
+
+    print(dataset_K[1].shape, dataset_K[2].shape, dataset_hphi[1].shape, dataset_hphi[2].shape)
 
     overlap = torch.sum(torch.sqrt(dataset_K[2]) * torch.sqrt(dataset_hphi[2]) * (2. * dataset_K[1] - 1) * (2. * dataset_hphi[1] - 1) / torch.sqrt(torch.sum(dataset_K[2])) / torch.sqrt(torch.sum(dataset_hphi[2])))
     print('overlap = ' + str(overlap))
@@ -547,7 +550,6 @@ def main():
         )
         sys.exit(1)
     config = _with_file_like(sys.argv[1], "r", json.load)
-    system_folder = config["system"]
     output = config["output"]
     number_spins = get_number_spins(config)
     number_runs = config["number_runs"]
