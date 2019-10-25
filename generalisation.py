@@ -425,7 +425,7 @@ def load_dataset_large(dataset_name):
 
     dataset = (
         torch.from_numpy(all_spins),
-        torch.where(all_amplitudes >= 0, torch.tensor([0]), torch.tensor([1])).squeeze().type(torch.FloatTensor),
+        torch.where(all_amplitudes >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
         (torch.abs(all_amplitudes) ** 2).type(torch.FloatTensor),
     )
 
@@ -435,14 +435,14 @@ def load_dataset_large(dataset_name):
 
 def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
     global number_spins
-    dataset_K = load_dataset_K(dataset_name[1])
-    dataset_hphi = load_dataset_large(dataset_name[0])
+    dataset = load_dataset_large(dataset_name)
+    # dataset_hphi = load_dataset_large(dataset_name[0])
 
-    print(dataset_K[1].shape, dataset_K[2].shape, dataset_hphi[1].shape, dataset_hphi[2].shape)
+    # print(dataset_K[1].shape, dataset_K[2].shape, dataset_hphi[1].shape, dataset_hphi[2].shape)
 
-    overlap = torch.sum(torch.sqrt(dataset_K[2]) * torch.sqrt(dataset_hphi[2]) * (2. * dataset_K[1] - 1) * (2. * dataset_hphi[1] - 1) / torch.sqrt(torch.sum(dataset_K[2])) / torch.sqrt(torch.sum(dataset_hphi[2])))
-    print('overlap = ' + str(overlap))
-    exit(-1)
+    # overlap = torch.sum(torch.sqrt(dataset_K[2]) * torch.sqrt(dataset_hphi[2]) * (2. * dataset_K[1] - 1) * (2. * dataset_hphi[1] - 1) / torch.sqrt(torch.sum(dataset_K[2])) / torch.sqrt(torch.sum(dataset_hphi[2])))
+    # print('overlap = ' + str(overlap))
+    # exit(-1)
     weights = None
 
     class Loss(object):
@@ -466,7 +466,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
     train_options["loss"] = loss_fn
     if train_options["type"] == "phase":
         train_options["accuracy"] = accuracy
-
+    print(train_options["optimiser"][:-1] + str(', lr = ') + str(lr) + ')')
     train_options["optimiser"] = eval(train_options["optimiser"][:-1] + str(', lr = ') + str(lr) + ')')
 
     stats = []
@@ -588,13 +588,12 @@ def main():
 
     for j2, lr in zip(j2_list, lrs):
         for rt in config.get("train_fractions"):
-            dataset_name_hphi = os.path.join(config['system_hphi'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')
-            dataset_name_K = config['system_K']
+            dataset_name = os.path.join(config['system'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
             print(j2)
             local_result = try_one_dataset(
-                [dataset_name_hphi, dataset_name_K], local_output, Net, number_runs, number_best, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
+                dataset_name, local_output, Net, number_runs, number_best, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
