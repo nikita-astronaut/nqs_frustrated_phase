@@ -435,7 +435,10 @@ def load_dataset_large(dataset_name):
 
 def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
     global number_spins
-    dataset = load_dataset_large(dataset_name)
+    
+    dataset = load_dataset_K(dataset_name)  # K way
+    # datasey = load_dataset_large(dataset_name)  # HPHI way
+
     # dataset_hphi = load_dataset_large(dataset_name[0])
 
     # print(dataset_K[1].shape, dataset_K[2].shape, dataset_hphi[1].shape, dataset_hphi[2].shape)
@@ -588,7 +591,8 @@ def main():
 
     for j2, lr in zip(j2_list, lrs):
         for rt in config.get("train_fractions"):
-            dataset_name = os.path.join(config['system'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')
+            # dataset_name = os.path.join(config['system_hphi'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')  # HPHI way
+            dataset_name = config['system_K']  # K way
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
             print(j2)
