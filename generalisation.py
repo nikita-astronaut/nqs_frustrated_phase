@@ -26,6 +26,8 @@ from scipy.special import comb
 from itertools import combinations
 from nqs_frustrated_phase.hphi import load_eigenvector
 from nqs_frustrated_phase._core import sector
+import quspin
+from quspin import basis
 number_spins = None
 
 def index_to_spin(index):
@@ -347,38 +349,50 @@ def get_number_spins(config):
 
 def load_dataset_K(dataset):
     global number_spins
+    t = time.time()
     magnetisation = number_spins % 2
     number_ups = (number_spins + magnetisation) // 2
     shift = number_ups * (number_ups - 1) // 2 if number_ups > 0 else 0
 
-    print("load")
+    print("load", flush = True)
     # Load the dataset and basis
-    print(dataset)
+    print(dataset, flush = True)
     mat = sio.loadmat(dataset)
-    print(mat)
     dataset = dataset.split("--");
     dataset[1] = "basis";
     basis = "--".join(dataset[:2]+dataset[-2:])[:-4]
-    print(basis)
+    print(basis, flush = True)
     basis = _with_file_like(basis, "rb", pickle.load)
-
-    all_spins = np.fromiter(
-        sector(number_spins, magnetisation),
-        dtype=np.uint64,
-        count=int(scipy.special.comb(number_spins, number_ups)),
-    ).astype(np.int64)    
-
-    print("expansion")
+    print('loading took = ', time.time() - t, flush = True)
+    t = time.time()
+    all_spins = quspin.basis.spin_basis_general(number_spins, pauli=0, Nup = number_spins // 2).states
+    # all_spins = np.fromiter(
+    #     sector(number_spins, magnetisation),
+    #     dtype=np.uint64,
+    #     count=int(scipy.special.comb(number_spins, number_ups)),
+    # ).astype(np.int64)    
+    print('spins set generation took = ', time.time() - t, flush= True)
+    t = time.time()
+    print("expansion", flush = True)
     # Expansion of eigenstate
-    phi = basis.get_vec(mat['psi'][:,0], sparse = False, pcon=True).astype(np.float32)
+    phi = basis.get_vec(mat['psi'][:, 0], sparse = False, pcon=True).astype(np.float32)
 
+    print('expansion took = ', time.time() - t, flush = True)
+    t = time.time()
     dataset = torch.from_numpy(phi)
     # Pre-processing
+
+    norm = torch.sum(torch.abs(dataset) ** 2).item()
     dataset = (
-        torch.from_numpy(all_spins),
-        torch.where(dataset >= 0, torch.tensor([0]), torch.tensor([1])).squeeze().type(torch.FloatTensor),
-        (torch.abs(dataset) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
+        torch.from_numpy(all_spins.astype(np.int64)),
+        torch.where(dataset >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
+        (torch.abs(dataset) ** 2 / norm).unsqueeze(1)[:, 0].type(torch.FloatTensor),
     )
+
+    print('to torch format took = ', time.time() - t, flush = True)
+    t = time.time()
+
+    print('total norm = ', torch.sum(dataset[2]).item(), norm)
     return dataset
 
 
@@ -437,7 +451,9 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
     global number_spins
     
     dataset = load_dataset_K(dataset_name)  # K way
-    # datasey = load_dataset_large(dataset_name)  # HPHI way
+
+    print("loaded dateset", flush = True)
+    # dataset = load_dataset_large(dataset_name)  # HPHI way
 
     # dataset_hphi = load_dataset_large(dataset_name[0])
 
@@ -479,10 +495,11 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
         train_set, test_set, rest_set = split_dataset(
             dataset, [rt, train_options["test_fraction"]], sampling = sampling
         )
+        print("splitted DS", flush = True)
         module, train_history, test_history = train(
             module, train_set, test_set, gpu, lr, **train_options
         )
-
+        print("finished training", flush = True)
         resampled_set, _, _ = split_dataset(
             dataset, [rt, train_options["test_fraction"]], sampling = sampling
         )
@@ -591,7 +608,7 @@ def main():
 
     for j2, lr in zip(j2_list, lrs):
         for rt in config.get("train_fractions"):
-            # dataset_name = os.path.join(config['system_hphi'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')  # HPHI way
+            # dataset_name = os.path.join(config['system'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')  # HPHI way
             dataset_name = config['system_K']  # K way
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
