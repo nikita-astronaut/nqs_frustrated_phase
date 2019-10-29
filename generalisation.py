@@ -365,7 +365,7 @@ def load_dataset_K(dataset):
     basis = _with_file_like(basis, "rb", pickle.load)
     print('loading took = ', time.time() - t, flush = True)
     t = time.time()
-    all_spins = quspin.basis.spin_basis_general(number_spins, pauli=0, Nup = number_spins // 2).states
+    all_spins = quspin.basis.spin_basis_general(number_spins, pauli=0, Nup = number_spins // 2)
     # all_spins = np.fromiter(
     #     sector(number_spins, magnetisation),
     #     dtype=np.uint64,
@@ -381,10 +381,10 @@ def load_dataset_K(dataset):
     t = time.time()
     dataset = torch.from_numpy(phi)
     # Pre-processing
-
+    print('from numpy done')
     norm = torch.sum(torch.abs(dataset) ** 2).item()
     dataset = (
-        torch.from_numpy(all_spins.astype(np.int64)),
+        torch.from_numpy(all_spins.states.astype(np.int64)),
         torch.where(dataset >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
         (torch.abs(dataset) ** 2 / norm).unsqueeze(1)[:, 0].type(torch.FloatTensor),
     )
