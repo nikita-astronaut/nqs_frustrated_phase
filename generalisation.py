@@ -305,7 +305,10 @@ def predict_large_data(model, dataset_x, gpu, train_type, no_model_movement = Fa
     
     size = dataset_x.size()[0]
     for idxs in np.split(np.arange(size), np.arange(0, size, 10000))[1:]:
-        predicted = torch.squeeze(model(index_to_spin(dataset_x[idxs]).cuda()).cpu()).type(torch.FloatTensor)
+        if gpu:
+            predicted = torch.squeeze(model(index_to_spin(dataset_x[idxs]).cuda()).cpu()).type(torch.FloatTensor)
+        else:
+            predicted = torch.squeeze(model(index_to_spin(dataset_x[idxs]))).type(torch.FloatTensor)
         result[idxs, ...] = predicted
     if gpu and not no_model_movement:
         model = model.cpu()
@@ -523,7 +526,8 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
             resampled_acc = accuracy(predicted_resampled, resampled_set[1], resampled_set[2])
         
             best_overlap = overlap(train_options["type"], module, *dataset, gpu)
-            print('total dataset overlap = ' + str(best_overlap) + 'total dataset accuracy = ' + str(rest_accuracy))
+            print('total dataset overlap = ' + str(best_overlap) + ', rest dataset accuracy = ' + str(rest_accuracy))
+            print('resampled loss =  = ' + str(resampled_loss) + ', resampled dataset accuracy = ' + str(resampled_acc))
 
             rest_overlap = overlap(train_options["type"], module, rest_set[0], rest_set[1], rest_set_amplitudes, gpu)
             rest_overlaps.append(rest_overlap)
