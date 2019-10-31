@@ -98,10 +98,10 @@ def split_dataset(dataset, fractions, sampling='uniform'):
         indices = torch.randperm(n)
     else:
         #indices = torch.multinomial(weights[:int(len(weights) * 0.01)], int(n * sum(fractions))).numpy()
-        #indices = np.random.choice(np.arange(int(n / 100.)), size = int(n * sum(fractions)), replace=False, p=weights[:int(len(weights) / 100.)] / np.sum(weights[:int(len(weights) / 100.)]))
-        # print('indices selection took = ', time.time() - t, flush = True)
-        #t = time.time()
-        indices = np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=False, p=weights)
+        indices = np.random.choice(np.arange(int(n / 100.)), size = int(n * sum(fractions)), replace=False, p=weights[:int(len(weights) / 100.)] / np.sum(weights[:int(len(weights) / 100.)]))
+        print('indices selection took = ', time.time() - t, flush = True)
+        t = time.time()
+        # indices = np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=False, p=weights)
         indices = torch.from_numpy(np.concatenate([indices, np.setdiff1d(np.arange(n), indices)], axis = 0))
 
     print('indexes concatenation took = ', time.time() - t, flush = True)
@@ -362,7 +362,7 @@ def get_number_spins(config):
         )
     return int(match.group(2))
 
-def load_dataset_K(dataset_name):
+def load_dataset_K(dataset_name, rt_train, rt_test):
     global number_spins
     t = time.time()
     magnetisation = number_spins % 2
@@ -380,7 +380,29 @@ def load_dataset_K(dataset_name):
     basis = _with_file_like(basis, "rb", pickle.load)
     print('loading took = ', time.time() - t, flush = True)
     t = time.time()
-    all_spins = quspin.basis.spin_basis_general(number_spins, pauli=0, Nup = number_spins // 2)
+    fullbasis = quspin.basis.spin_basis_general(number_spins, pauli=0, Nup = number_spins // 2)
+
+
+    cnt = np.zeros(basis.states, dtype=np.int32)
+    fullbasis = spin_basis_general(basis.N, pauli=0, Nup = basis.N // 2)
+    repr = basis.representative(fullbasis.states)
+    for i in repr: cnt[i] += 1
+
+    p = cnt * psi**2
+    p /= np.sum(p)
+
+    indx = np.arange(len(fullbasis.states))
+    np.random.shuffle(indx)
+
+    num_states_required = int((rt_train + rt_test) * len(fullbasis))
+
+    res = np.zeros(num_states_required); k = 0;
+    i = 0
+    while k < num_states_required:
+        if np.random() < p[repr[indx[i]]]:
+            res[k] = fullbasis.states[indx[i]]
+            k += 1
+        i = (i + 1) % len(fullbasis.states)
     # all_spins = np.fromiter(
     #     sector(number_spins, magnetisation),
     #     dtype=np.uint64,
@@ -398,6 +420,7 @@ def load_dataset_K(dataset_name):
     vector = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
     # np.save(vector, phi)
     phi = np.load(vector + '.npy')
+    states_sampled = phi[res]
 
     print('saving/loading took = ', time.time() - t, flush = True)
     t = time.time()
@@ -406,10 +429,24 @@ def load_dataset_K(dataset_name):
     # Pre-processing
     print('from numpy done', flush = True)
     norm = torch.sum(torch.abs(dataset) ** 2).item()
-    dataset = (
-        torch.from_numpy(all_spins.states.astype(np.int64)),
+    dataset_total = (
+        torch.from_numpy(fullbasis.states.astype(np.int64)),
         torch.where(dataset >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
         (torch.abs(dataset) ** 2 / norm).unsqueeze(1)[:, 0].type(torch.FloatTensor),
+    )
+
+    dataset_train = torch.from_numpy(states_sampled[:int(rt_train * len(dataset_total[0]))])
+    dataset_train = (
+        torch.from_numpy(res[:int(rt_train * len(dataset_total[0]))].astype(np.int64)),
+        torch.where(dataset_train >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
+        (torch.abs(dataset_train) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
+    )
+
+    dataset_test = torch.from_numpy(states_sampled[int(rt_train * len(dataset_total[0])):])
+    dataset_test = (
+        torch.from_numpy(res[int(rt_train * len(dataset_total[0])):].astype(np.int64)),
+        torch.where(dataset_test >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
+        (torch.abs(dataset_test) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
     )
 
     print('to torch format took = ', time.time() - t, flush = True)
@@ -424,7 +461,7 @@ def load_dataset_K(dataset_name):
     t = time.time()
 
     print('total norm = ', torch.sum(dataset[2]).item(), norm, flush = True)
-    return dataset
+    return dataset_total, dataset_train, dataset_test
 
 
 def accuracy(predicted, expected, weight, apply_weights_loss = False):
@@ -432,7 +469,6 @@ def accuracy(predicted, expected, weight, apply_weights_loss = False):
     if not apply_weights_loss:
         return torch.sum(predicted == expected).item() / float(expected.size(0))
     agreement = predicted == expected
-    print(agreement.size(), weight.size()), 'accuracy')
     return torch.sum(agreement.type(torch.FloatTensor) * torch.tensor(weight, dtype = torch.float32)).item()  # / float(expected.size(0))
  
 def overlap(train_type, ψ, samples, target, weights, gpu):
@@ -453,9 +489,8 @@ def overlap_phase(ψ, samples, target, weights, gpu):
     predicted_signs = 2.0 * torch.max(predict_large_data(ψ, samples, gpu, "phase"), dim=1)[1] - 1.0
     print(predicted_signs.size(), flush = True)
     target_signs = 2.0 * target - 1.0
-    print(predicted_signs.size(), target_signs.size(), weights.size(), 'overlap phase')
     overlap = torch.sum(predicted_signs.type(torch.FloatTensor) * target_signs.type(torch.FloatTensor) * weights.type(torch.FloatTensor)).item()
-    return torch.abs(overlap / torch.sum(weights).item())
+    return overlap / torch.sum(weights).item()
 
 def load_dataset_large(dataset_name):
     global number_spins
@@ -551,7 +586,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
             predicted_resampled = predict_large_data(module, resampled_set[0], gpu, train_options["type"])
 
             rest_loss = loss_fn(predicted_rest, rest_set[1], rest_set[2], apply_weights_loss = True).item()
-            rest_accuracy = accuracy(predicted_rest, rest_set[1], rest_set_amplitudes, apply_weights_loss = True)
+            rest_accuracy = accuracy(predicted_rest, rest_set[1], rest_set[2], apply_weights_loss = True)
             resampled_loss = loss_fn(predicted_resampled, resampled_set[1], resampled_set[2]).item()
             resampled_acc = accuracy(predicted_resampled, resampled_set[1], resampled_set[2])
         
