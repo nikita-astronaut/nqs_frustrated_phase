@@ -432,7 +432,7 @@ def accuracy(predicted, expected, weight, apply_weights_loss = False):
     if not apply_weights_loss:
         return torch.sum(predicted == expected).item() / float(expected.size(0))
     agreement = predicted == expected
-    print(agreement.size(), weight.size()), 'accuracy')
+    print(agreement.size(), weight.size(), 'accuracy')
     return torch.sum(agreement.type(torch.FloatTensor) * torch.tensor(weight, dtype = torch.float32)).item()  # / float(expected.size(0))
  
 def overlap(train_type, ψ, samples, target, weights, gpu):
@@ -455,7 +455,7 @@ def overlap_phase(ψ, samples, target, weights, gpu):
     target_signs = 2.0 * target - 1.0
     print(predicted_signs.size(), target_signs.size(), weights.size(), 'overlap phase')
     overlap = torch.sum(predicted_signs.type(torch.FloatTensor) * target_signs.type(torch.FloatTensor) * weights.type(torch.FloatTensor)).item()
-    return torch.abs(overlap / torch.sum(weights).item())
+    return np.abs(overlap / torch.sum(weights).item())
 
 def load_dataset_large(dataset_name):
     global number_spins
