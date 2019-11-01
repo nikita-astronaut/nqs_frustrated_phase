@@ -380,6 +380,8 @@ def load_dataset_K(dataset_name, rt_train, rt_test):
     vector = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
     phi = np.load(vector + '.npy')
 
+    print('IPR = ', str(np.sum(phi ** 2) ** 2 / np.sum(phi ** 4)))
+
     def sample(basis, repr, repr_ix, psi, n):
         repr_sampled = basis.states[np.random.choice(len(psi), p=psi**2, size=n)]
         res = np.zeros(n, dtype = np.int64); i = 0
@@ -416,6 +418,7 @@ def load_dataset_K(dataset_name, rt_train, rt_test):
     t = time.time()
 
     dataset = torch.from_numpy(phi)
+    print(fullbasis_states.shape, dataset.size())
     # Pre-processing
     # print('from numpy done', flush = True)
     # norm = torch.sum(torch.abs(dataset) ** 2).item()
@@ -564,7 +567,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
             module, train_set, test_set, gpu, lr, **train_options
         )
         print("finished training", flush = True)
-        _, _, resampled_set = load_dataset_K(dataset_name, rt, train_options["test_fraction"])
+        # _, _, resampled_set = load_dataset_K(dataset_name, rt, train_options["test_fraction"])
         #resampled_set, _, _ = split_dataset(
         #    dataset, [rt, train_options["test_fraction"]], sampling = sampling
         #)
@@ -579,13 +582,15 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
             rest_set = (rest_set[0], rest_set[1], rest_set[2] * 0.0 + 1.0 / rest_set[2].size()[0])
         
         with torch.no_grad():
-            predicted_rest = predict_large_data(module, rest_set[0], gpu, train_options["type"])
-            predicted_resampled = predict_large_data(module, resampled_set[0], gpu, train_options["type"])
+            #predicted_rest = predict_large_data(module, rest_set[0], gpu, train_options["type"])
 
-            rest_loss = loss_fn(predicted_rest, rest_set[1], rest_set[2], apply_weights_loss = True).item()
-            rest_accuracy = accuracy(predicted_rest, rest_set[1], rest_set[2], apply_weights_loss = True)
-            resampled_loss = loss_fn(predicted_resampled, resampled_set[1], resampled_set[2]).item()
-            resampled_acc = accuracy(predicted_resampled, resampled_set[1], resampled_set[2])
+            print(rest_set[0].size(), predicted_rest.size(), rest_set[1].size(), rest_set[2].size())
+            predicted_resampled = 0#predict_large_data(module, resampled_set[0], gpu, train_options["type"])
+
+            rest_loss = 0# loss_fn(predicted_rest, rest_set[1], rest_set[2], apply_weights_loss = True).item()
+            rest_accuracy = 0#accuracy(predicted_rest, rest_set[1], rest_set[2], apply_weights_loss = True)
+            resampled_loss = 0#loss_fn(predicted_resampled, resampled_set[1], resampled_set[2]).item()
+            resampled_acc = 0#accuracy(predicted_resampled, resampled_set[1], resampled_set[2])
         
             best_overlap = overlap(train_options["type"], module, *rest_set, gpu)
             print('total dataset overlap = ' + str(best_overlap) + ', rest dataset accuracy = ' + str(rest_accuracy))
