@@ -363,88 +363,83 @@ def get_number_spins(config):
     return int(match.group(2))
 
 def load_dataset_K(dataset_name, rt_train, rt_test):
-    global number_spins
+    import pickle
+    import quspin
+    import numpy as np
+    import scipy.io as sio
     t = time.time()
-    magnetisation = number_spins % 2
-    number_ups = (number_spins + magnetisation) // 2
-    shift = number_ups * (number_ups - 1) // 2 if number_ups > 0 else 0
-
-    print("load", flush = True)
-    # Load the dataset and basis
-    print(dataset_name, flush = True)
-    mat = sio.loadmat(dataset_name)
+    psi = sio.loadmat(dataset_name)['psi'][:, 0]
     dataset_name = dataset_name.split("--");
     dataset_name[1] = "basis";
     basis = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
-    print(basis, flush = True)
-    basis = _with_file_like(basis, "rb", pickle.load)
-    print('loading took = ', time.time() - t, flush = True)
-    t = time.time()
-    fullbasis = quspin.basis.spin_basis_general(number_spins, pauli=0, Nup = number_spins // 2)
 
+    with open(basis, "rb") as f:
+        basis = pickle.load(f)
 
-    cnt = np.zeros(basis.states, dtype=np.int32)
-    fullbasis = spin_basis_general(basis.N, pauli=0, Nup = basis.N // 2)
-    repr = basis.representative(fullbasis.states)
-    for i in repr: cnt[i] += 1
-
-    p = cnt * psi**2
-    p /= np.sum(p)
-
-    indx = np.arange(len(fullbasis.states))
-    np.random.shuffle(indx)
-
-    num_states_required = int((rt_train + rt_test) * len(fullbasis))
-
-    res = np.zeros(num_states_required); k = 0;
-    i = 0
-    while k < num_states_required:
-        if np.random() < p[repr[indx[i]]]:
-            res[k] = fullbasis.states[indx[i]]
-            k += 1
-        i = (i + 1) % len(fullbasis.states)
-    # all_spins = np.fromiter(
-    #     sector(number_spins, magnetisation),
-    #     dtype=np.uint64,
-    #     count=int(scipy.special.comb(number_spins, number_ups)),
-    # ).astype(np.int64)    
-    print('spins set generation took = ', time.time() - t, flush= True)
-    t = time.time()
-    print("expansion", flush = True)
-    # Expansion of eigenstate
-    # phi = basis.get_vec(mat['psi'][:, 0], sparse = False, pcon=True).astype(np.float32)
-
-    # print('expansion took = ', time.time() - t, flush = True)
-    # t = time.time()
     dataset_name[1] = "dump_vector"
     vector = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
-    # np.save(vector, phi)
     phi = np.load(vector + '.npy')
-    states_sampled = phi[res]
 
-    print('saving/loading took = ', time.time() - t, flush = True)
+    def sample(basis, repr, repr_ix, psi, n):
+        repr_sampled = basis.states[np.random.choice(len(psi), p=psi**2, size=n)]
+        res = np.zeros(n, dtype = np.int64); i = 0
+        for i, r in enumerate(repr_sampled):
+            res[i] = repr_ix[np.random.randint(np.searchsorted(repr, r, 'left'), np.searchsorted(repr, r, 'right'))]
+        return res
+
+    from quspin.basis import spin_basis_general
+    # fullbasis = spin_basis_general(basis.N, pauli=0, Nup = basis.N//2)
+    dataset_name[1] = "fullbasisstates";
+    fullbasisstates_name = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
+    # np.save(fullbasisstates_name, fullbasis.states)
+    fullbasis_states = np.load(fullbasisstates_name + '.npy')
+    # exit(-1)
+    # repr = basis.representative(fullbasis.states)
+    # repr_ix = np.argsort(repr)
+    # repr = repr[repr_ix]
+    dataset_name[1] = "repr_ix";
+    repr_ix_name = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
+    # np.save(repr_ix_name, repr_ix)
+    repr_ix = np.load(repr_ix_name + '.npy')
+    dataset_name[1] = "repr";
+    repr_name = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
+    repr = np.load(repr_name + '.npy')
+    # np.save(repr_name, repr)
+    print('loading of everything took = ', time.time() - t, flush = True)
+    t = time.time()
+    res = sample(basis, repr, repr_ix, psi, int(len(phi) * (rt_train + rt_test)))
+    spins = fullbasis_states[res]
+    amplitudes = phi[res]
+    # print(np.mean(phi[res]**2))
+    # print(np.sum(phi**4))
+    print('sampling took = ', time.time() - t, flush = True)
     t = time.time()
 
     dataset = torch.from_numpy(phi)
     # Pre-processing
-    print('from numpy done', flush = True)
-    norm = torch.sum(torch.abs(dataset) ** 2).item()
+    # print('from numpy done', flush = True)
+    # norm = torch.sum(torch.abs(dataset) ** 2).item()
     dataset_total = (
-        torch.from_numpy(fullbasis.states.astype(np.int64)),
+        torch.from_numpy(fullbasis_states.astype(np.int64)),
         torch.where(dataset >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
-        (torch.abs(dataset) ** 2 / norm).unsqueeze(1)[:, 0].type(torch.FloatTensor),
+        (torch.abs(dataset) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
     )
+    print('total dataset creation took = ', time.time() - t, flush = True)
+    t = time.time()
 
-    dataset_train = torch.from_numpy(states_sampled[:int(rt_train * len(dataset_total[0]))])
+    dataset_train = torch.from_numpy(amplitudes[:int(rt_train * len(dataset_total[0]))])
     dataset_train = (
-        torch.from_numpy(res[:int(rt_train * len(dataset_total[0]))].astype(np.int64)),
+        torch.from_numpy(spins[:int(rt_train * len(dataset_total[0]))].astype(np.int64)),
         torch.where(dataset_train >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
         (torch.abs(dataset_train) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
     )
 
-    dataset_test = torch.from_numpy(states_sampled[int(rt_train * len(dataset_total[0])):])
+    print('train dataset creation took = ', time.time() - t, flush = True)
+    t = time.time()
+
+    dataset_test = torch.from_numpy(amplitudes[int(rt_train * len(dataset_total[0])):])
     dataset_test = (
-        torch.from_numpy(res[int(rt_train * len(dataset_total[0])):].astype(np.int64)),
+        torch.from_numpy(spins[int(rt_train * len(dataset_total[0])):].astype(np.int64)),
         torch.where(dataset_test >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
         (torch.abs(dataset_test) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
     )
@@ -457,10 +452,10 @@ def load_dataset_K(dataset_name, rt_train, rt_test):
     # with open(vector, 'wb') as f:
     #    pickle.dump(dataset, f)
 
-    print('dump took = ', time.time() - t, flush = True)
-    t = time.time()
+    # print('dump took = ', time.time() - t, flush = True)
+    # t = time.time()
 
-    print('total norm = ', torch.sum(dataset[2]).item(), norm, flush = True)
+    # print('total norm = ', torch.sum(dataset[2]).item(), norm, flush = True)
     return dataset_total, dataset_train, dataset_test
 
 
@@ -518,10 +513,10 @@ def load_dataset_large(dataset_name):
 def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
     global number_spins
     #
-    # dataset = load_dataset_K(dataset_name)  # K way
+    # dataset_total, dataset_train, dataset_test = load_dataset_K(dataset_name, rt, train_options["test_fraction"])  # K way
 
     # print("loaded dateset", flush = True)
-    dataset = load_dataset_large(dataset_name)  # HPHI way
+    # dataset = load_dataset_large(dataset_name)  # HPHI way
 
     # dataset_hphi = load_dataset_large(dataset_name[0])
 
@@ -560,17 +555,19 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
     rest_overlaps = []
     for i in range(number_runs):
         module = Net(number_spins)
-        train_set, test_set, rest_set = split_dataset(
-            dataset, [rt, train_options["test_fraction"]], sampling = sampling
-        )
+        rest_set, train_set, test_set = load_dataset_K(dataset_name, rt, train_options["test_fraction"]) 
+        # train_set, test_set, rest_set = split_dataset(
+        #     dataset, [rt, train_options["test_fraction"]], sampling = sampling
+        # )
         print("splitted DS", flush = True)
         module, train_history, test_history = train(
             module, train_set, test_set, gpu, lr, **train_options
         )
         print("finished training", flush = True)
-        resampled_set, _, _ = split_dataset(
-            dataset, [rt, train_options["test_fraction"]], sampling = sampling
-        )
+        _, _, resampled_set = load_dataset_K(dataset_name, rt, train_options["test_fraction"])
+        #resampled_set, _, _ = split_dataset(
+        #    dataset, [rt, train_options["test_fraction"]], sampling = sampling
+        #)
 
         if gpu:
             module = module.cuda()
@@ -677,8 +674,8 @@ def main():
 
     for j2, lr in zip(j2_list, lrs):
         for rt in config.get("train_fractions"):
-            dataset_name = os.path.join(config['system'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')  # HPHI way
-            # dataset_name = config['system_K']  # K way
+            # dataset_name = os.path.join(config['system'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')  # HPHI way
+            dataset_name = config['system_K']  # K way
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
             print(j2)
