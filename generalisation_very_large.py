@@ -362,7 +362,7 @@ def get_number_spins(config):
         )
     return int(match.group(2))
 
-def load_dataset_K(dataset_name, rt_train, rt_test):
+def load_dataset_K(dataset_name, rt_train, rt_test, rt_rest):
     import pickle
     import quspin
     import numpy as np
@@ -409,7 +409,7 @@ def load_dataset_K(dataset_name, rt_train, rt_test):
     # np.save(repr_name, repr)
     print('loading of everything took = ', time.time() - t, flush = True)
     t = time.time()
-    res = sample(basis, repr, repr_ix, psi, int(len(phi) * (rt_train + rt_test)))
+    res = sample(basis, repr, repr_ix, psi, int(len(phi) * (rt_train + rt_test + rt_rest)))
     spins = fullbasis_states[res]
     amplitudes = phi[res]
     # print(np.mean(phi[res]**2))
@@ -417,34 +417,32 @@ def load_dataset_K(dataset_name, rt_train, rt_test):
     print('sampling took = ', time.time() - t, flush = True)
     t = time.time()
 
-    dataset = torch.from_numpy(phi)
-    print(fullbasis_states.shape, dataset.size())
+    # dataset = torch.from_numpy(phi)
+    # print(fullbasis_states.shape, dataset.size())
     # Pre-processing
     # print('from numpy done', flush = True)
     # norm = torch.sum(torch.abs(dataset) ** 2).item()
-    dataset_total = (
-        torch.from_numpy(fullbasis_states.astype(np.int64)),
-        torch.where(dataset >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
-        (torch.abs(dataset) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
+    dataset_rest = (
+        torch.from_numpy(spins[:int(len(phi) * rt_rest)].astype(np.int64)),
+        torch.where(amplitudes[:int(len(phi) * rt_rest)] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
+        (torch.abs(amplitudes[:int(len(phi) * rt_rest)]) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
     )
     print('total dataset creation took = ', time.time() - t, flush = True)
     t = time.time()
 
-    dataset_train = torch.from_numpy(amplitudes[:int(rt_train * len(dataset_total[0]))])
     dataset_train = (
-        torch.from_numpy(spins[:int(rt_train * len(dataset_total[0]))].astype(np.int64)),
-        torch.where(dataset_train >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
-        (torch.abs(dataset_train) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
+        torch.from_numpy(spins[int(len(phi) * rt_rest):int((rt_train + rt_rest) * len(phi))].astype(np.int64)),
+        torch.where(amplitudes[int(len(phi) * rt_rest):int((rt_train + rt_rest) * len(phi))] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
+        (torch.abs(amplitudes[int(len(phi) * rt_rest):int((rt_train + rt_rest) * len(phi))]) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
     )
 
     print('train dataset creation took = ', time.time() - t, flush = True)
     t = time.time()
 
-    dataset_test = torch.from_numpy(amplitudes[int(rt_train * len(dataset_total[0])):])
     dataset_test = (
-        torch.from_numpy(spins[int(rt_train * len(dataset_total[0])):].astype(np.int64)),
-        torch.where(dataset_test >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
-        (torch.abs(dataset_test) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
+        torch.from_numpy(spins[int((rt_train + rt_rest) * len(phi)):].astype(np.int64)),
+        torch.where(amplitudes[int((rt_train + rt_rest) * len(phi)):] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
+        (torch.abs(amplitudes[int((rt_train + rt_rest) * len(phi)):]) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
     )
 
     print('to torch format took = ', time.time() - t, flush = True)
@@ -459,7 +457,7 @@ def load_dataset_K(dataset_name, rt_train, rt_test):
     # t = time.time()
 
     # print('total norm = ', torch.sum(dataset[2]).item(), norm, flush = True)
-    return dataset_total, dataset_train, dataset_test
+    return dataset_rest, dataset_train, dataset_test
 
 
 def accuracy(predicted, expected, weight, apply_weights_loss = False):
@@ -558,7 +556,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
     rest_overlaps = []
     for i in range(number_runs):
         module = Net(number_spins)
-        rest_set, train_set, test_set = load_dataset_K(dataset_name, rt, train_options["test_fraction"]) 
+        rest_set, train_set, test_set = load_dataset_K(dataset_name, rt, train_options["test_fraction"], rt * 10) 
         # train_set, test_set, rest_set = split_dataset(
         #     dataset, [rt, train_options["test_fraction"]], sampling = sampling
         # )
