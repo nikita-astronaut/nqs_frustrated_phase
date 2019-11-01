@@ -587,18 +587,18 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
             resampled_loss = loss_fn(predicted_resampled, resampled_set[1], resampled_set[2]).item()
             resampled_acc = accuracy(predicted_resampled, resampled_set[1], resampled_set[2])
         
-            best_overlap = overlap(train_options["type"], module, *dataset, gpu)
+            best_overlap = overlap(train_options["type"], module, *rest_set, gpu)
             print('total dataset overlap = ' + str(best_overlap) + ', rest dataset accuracy = ' + str(rest_accuracy))
             print('resampled loss =  = ' + str(resampled_loss) + ', resampled dataset accuracy = ' + str(resampled_acc))
 
-            rest_overlap = overlap(train_options["type"], module, rest_set[0], rest_set[1], rest_set_amplitudes, gpu)
+            rest_overlap = best_overlap #overlap(train_options["type"], module, rest_set[0], rest_set[1], rest_set_amplitudes, gpu)
             rest_overlaps.append(rest_overlap)
             print('rest dataset overlap = ' + str(rest_overlap))
 
         if gpu:
             module = module.cpu()
-            if sampling != 'uniform':
-                dataset = (dataset[0].cpu(), dataset[1], dataset[2])
+        #     if sampling != 'uniform':
+        #         dataset = (dataset[0].cpu(), dataset[1], dataset[2])
         best = min(test_history, key=lambda t: t[2])
         best_train = min(train_history, key=lambda t: t[2])
         stats.append((*best[2:], *best_train[2:], rest_loss, rest_accuracy, resampled_loss, resampled_acc, best_overlap, rest_overlap))

@@ -17,8 +17,8 @@
         "test_fraction": 0.00001,
         "epochs": 1000,
         "batch_size": 128,
-        "frequency": 100000,
-        "patience": 1000,
+        "frequency": 10000,
+        "patience": 200,
         "optimiser": "lambda m: torch.optim.Adam(m.parameters(), weight_decay = 2e-4)",
         "load_best": true,
         "verbose": true
