@@ -3,7 +3,7 @@ import quspin
 import numpy as np
 import scipy.io as sio
 
-dataset_name = '/zfs/hybrilit.jinr.ru/user/a/astrakh/nqs_frustrated_phase/data/square/36/0.0/AFM--states--1.0--0.0--6--6.mat'
+dataset_name = '/zfs/hybrilit.jinr.ru/user/a/astrakh/nqs_frustrated_phase/data/square/36/1.0/AFM--states--1.0--1.0--6--6.mat'
 print(dataset_name, flush = True)
 psi = sio.loadmat(dataset_name)['psi'][:, 0]
 dataset_name = dataset_name.split("--");
@@ -29,7 +29,7 @@ fullbasis = spin_basis_general(basis.N, pauli=0, Nup = basis.N//2)
 dataset_name[1] = "fullbasisstates";
 fullbasisstates_name = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
 np.save(fullbasisstates_name, fullbasis.states)
-exit(-1)
+# exit(-1)
 repr = basis.representative(fullbasis.states)
 repr_ix = np.argsort(repr)
 repr = repr[repr_ix]

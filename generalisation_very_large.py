@@ -582,7 +582,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
         with torch.no_grad():
             #predicted_rest = predict_large_data(module, rest_set[0], gpu, train_options["type"])
 
-            print(rest_set[0].size(), predicted_rest.size(), rest_set[1].size(), rest_set[2].size())
+            print(rest_set[0].size(), rest_set[1].size(), rest_set[2].size())
             predicted_resampled = 0#predict_large_data(module, resampled_set[0], gpu, train_options["type"])
 
             rest_loss = 0# loss_fn(predicted_rest, rest_set[1], rest_set[2], apply_weights_loss = True).item()
