@@ -625,7 +625,12 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
     best_expression = min(train_history, key=lambda t: t[2])
     
     stats = np.array(stats)
-    best_runs_ids = np.argsort(-np.array(rest_overlaps))[:number_best]
+    if len(rest_overlaps) == np.sum(rest_overlaps < 0.03):
+        best_runs_ids = np.arange(len(rest_overlaps))
+    else:
+        best_runs_ids = np.where(rest_overlaps > 0.03)[0]
+
+    # best_runs_ids = np.argsort(-np.array(rest_overlaps))[:number_best]
     stats = stats[best_runs_ids, ...]
     np.savetxt(os.path.join(output, "loss.dat"), stats)
     return np.concatenate([np.vstack((np.mean(stats, axis=0), np.std(stats, axis=0))).T.reshape(-1), np.array([*best_expression[2:]])], axis = 0)
