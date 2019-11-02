@@ -411,7 +411,7 @@ def load_dataset_K(dataset_name, rt_train, rt_test, rt_rest):
     t = time.time()
     res = sample(basis, repr, repr_ix, psi, int(len(phi) * (rt_train + rt_test + rt_rest)))
     spins = fullbasis_states[res]
-    amplitudes = phi[res]
+    amplitudes = torch.from_numpy(phi[res])
     # print(np.mean(phi[res]**2))
     # print(np.sum(phi**4))
     print('sampling took = ', time.time() - t, flush = True)
