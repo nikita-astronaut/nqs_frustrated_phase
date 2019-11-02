@@ -15,7 +15,7 @@
     "training": {
         "type": "phase",
         "test_fraction": 0.00001,
-        "epochs": 1000,
+        "epochs": 20,
         "batch_size": 128,
         "frequency": 10000,
         "patience": 200,
