@@ -380,7 +380,7 @@ def load_dataset_K(dataset_name):
     vector = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
     phi = np.load(vector + '.npy')
 
-    print('IPR = ', str(np.sum(phi ** 2) ** 2 / np.sum((phi ** 2) ** 2)))
+    # print('IPR = ', str(np.sum(phi ** 2) ** 2 / np.sum((phi ** 2) ** 2)))
 
     from quspin.basis import spin_basis_general
     dataset_name[1] = "fullbasisstates";
