@@ -1,0 +1,26 @@
+{
+    "number_spins" : 36,
+    "system_hphi": "/zfs/hybrilit.jinr.ru/user/a/astrakh/nqs_frustrated_phase/data/square/36/",
+    "system_K": "/zfs/hybrilit.jinr.ru/user/a/astrakh/nqs_frustrated_phase/data/square/36",
+    "model": "/zfs/hybrilit.jinr.ru/user/a/astrakh/nqs_frustrated_phase/models/dense_64_ReLU_64_ReLU_2.py",
+    "output": "/zfs/hybrilit.jinr.ru/user/a/astrakh/nqs_frustrated_phase/workdir/square/36/dense2/wip_square_quadratic_phase_dense2",
+    "j2" : [0.4],
+    "lr" : [3e-4], 
+    "number_runs": 10,
+    "number_best": 5,
+    "use_jit": true,
+    "sampling" : "quadratic",
+    "gpu" : true,
+    "train_fractions" : [0.00003],
+    "training": {
+        "type": "phase",
+        "test_fraction": 0.00001,
+        "epochs": 20,
+        "batch_size": 128,
+        "frequency": 10000,
+        "patience": 200,
+        "optimiser": "lambda m: torch.optim.Adam(m.parameters(), weight_decay = 2e-4)",
+        "load_best": true,
+        "verbose": true
+    }
+}

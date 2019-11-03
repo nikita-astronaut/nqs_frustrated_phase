@@ -657,13 +657,15 @@ def main():
     results_file.flush()
 
     for j2, lr in zip(j2_list, lrs):
+        #/zfs/hybrilit.jinr.ru/user/a/astrakh/nqs_frustrated_phase/data/square/36/0.4/AFM--states--1.0--0.4--6--6.mat
+        dataset_name = config['system_K'] + '/' + str(j2) + '/AFM--states--1.0--' + str(j2) + '--6--6.mat'
+        dataset_decomposed = load_dataset_K(dataset_name)
         for rt in config.get("train_fractions"):
             # dataset_name = os.path.join(config['system'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')  # HPHI way
-            dataset_name = config['system_K']  # K way
+            # dataset_name = config['system_K']  # K way
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
             print(j2)
-            dataset_decomposed = load_dataset_K(dataset_name)
             local_result = try_one_dataset(
                 dataset_decomposed, local_output, Net, number_runs, number_best, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
             )
