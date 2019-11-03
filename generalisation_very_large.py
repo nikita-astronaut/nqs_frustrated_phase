@@ -362,7 +362,7 @@ def get_number_spins(config):
         )
     return int(match.group(2))
 
-def load_dataset_K(dataset_name, rt_train, rt_test, rt_rest):
+def load_dataset_K(dataset_name):
     import pickle
     import quspin
     import numpy as np
@@ -380,8 +380,22 @@ def load_dataset_K(dataset_name, rt_train, rt_test, rt_rest):
     vector = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
     phi = np.load(vector + '.npy')
 
-    print('IPR = ', str(np.sum(phi ** 2) ** 2 / np.sum(phi ** 4)))
+    # print('IPR = ', str(np.sum(phi ** 2) ** 2 / np.sum(phi ** 4)))
 
+    from quspin.basis import spin_basis_general
+    dataset_name[1] = "fullbasisstates";
+    fullbasisstates_name = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
+    fullbasis_states = np.load(fullbasisstates_name + '.npy')
+    dataset_name[1] = "repr_ix";
+    repr_ix_name = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
+    repr_ix = np.load(repr_ix_name + '.npy')
+    dataset_name[1] = "repr";
+    repr_name = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
+    repr = np.load(repr_name + '.npy')
+    print('loading of everything took = ', time.time() - t, flush = True)
+    return basis, psi, phi, fullbasis_states, repr_ix, repr
+
+def generate_datesets_K(basis, psi, phi, fullbasis_states, repr_ix, repr, rt_train, rt_test, rt_rest):
     def sample(basis, repr, repr_ix, psi, n):
         repr_sampled = basis.states[np.random.choice(len(psi), p=psi**2, size=n)]
         res = np.zeros(n, dtype = np.int64); i = 0
@@ -389,39 +403,13 @@ def load_dataset_K(dataset_name, rt_train, rt_test, rt_rest):
             res[i] = repr_ix[np.random.randint(np.searchsorted(repr, r, 'left'), np.searchsorted(repr, r, 'right'))]
         return res
 
-    from quspin.basis import spin_basis_general
-    # fullbasis = spin_basis_general(basis.N, pauli=0, Nup = basis.N//2)
-    dataset_name[1] = "fullbasisstates";
-    fullbasisstates_name = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
-    # np.save(fullbasisstates_name, fullbasis.states)
-    fullbasis_states = np.load(fullbasisstates_name + '.npy')
-    # exit(-1)
-    # repr = basis.representative(fullbasis.states)
-    # repr_ix = np.argsort(repr)
-    # repr = repr[repr_ix]
-    dataset_name[1] = "repr_ix";
-    repr_ix_name = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
-    # np.save(repr_ix_name, repr_ix)
-    repr_ix = np.load(repr_ix_name + '.npy')
-    dataset_name[1] = "repr";
-    repr_name = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
-    repr = np.load(repr_name + '.npy')
-    # np.save(repr_name, repr)
-    print('loading of everything took = ', time.time() - t, flush = True)
     t = time.time()
     res = sample(basis, repr, repr_ix, psi, int(len(phi) * (rt_train + rt_test + rt_rest)))
     spins = fullbasis_states[res]
     amplitudes = torch.from_numpy(phi[res])
-    # print(np.mean(phi[res]**2))
-    # print(np.sum(phi**4))
     print('sampling took = ', time.time() - t, flush = True)
     t = time.time()
 
-    # dataset = torch.from_numpy(phi)
-    # print(fullbasis_states.shape, dataset.size())
-    # Pre-processing
-    # print('from numpy done', flush = True)
-    # norm = torch.sum(torch.abs(dataset) ** 2).item()
     dataset_rest = (
         torch.from_numpy(spins[:int(len(phi) * rt_rest)].astype(np.int64)),
         torch.where(amplitudes[:int(len(phi) * rt_rest)] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
@@ -448,15 +436,6 @@ def load_dataset_K(dataset_name, rt_train, rt_test, rt_rest):
     print('to torch format took = ', time.time() - t, flush = True)
     t = time.time()
 
-    # dataset_name[1] = "dump_vector"
-    # vector = "--".join(dataset_name[:2]+dataset_name[-2:])[:-4]
-    # with open(vector, 'wb') as f:
-    #    pickle.dump(dataset, f)
-
-    # print('dump took = ', time.time() - t, flush = True)
-    # t = time.time()
-
-    # print('total norm = ', torch.sum(dataset[2]).item(), norm, flush = True)
     return dataset_rest, dataset_train, dataset_test
 
 
@@ -511,7 +490,7 @@ def load_dataset_large(dataset_name):
     return dataset
 
 
-def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
+def try_one_dataset(dataset_decomposed, output, Net, number_runs, number_best, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
     global number_spins
     #
     # dataset_total, dataset_train, dataset_test = load_dataset_K(dataset_name, rt, train_options["test_fraction"])  # K way
@@ -556,10 +535,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
     rest_overlaps = []
     for i in range(number_runs):
         module = Net(number_spins)
-        rest_set, train_set, test_set = load_dataset_K(dataset_name, rt, train_options["test_fraction"], rt * 10) 
-        # train_set, test_set, rest_set = split_dataset(
-        #     dataset, [rt, train_options["test_fraction"]], sampling = sampling
-        # )
+        rest_set, train_set, test_set = generate_datasets_K(*dataset_decomposed, rt, train_options["test_fraction"], rt * 10) 
         print("splitted DS", flush = True)
         module, train_history, test_history = train(
             module, train_set, test_set, gpu, lr, **train_options
@@ -687,8 +663,9 @@ def main():
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
             print(j2)
+            dataset_decomposed = load_dataset_K(dataset_name)
             local_result = try_one_dataset(
-                dataset_name, local_output, Net, number_runs, number_best, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
+                dataset_decomposed, local_output, Net, number_runs, number_best, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
