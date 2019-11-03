@@ -623,7 +623,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
     )
     '''
     best_expression = min(train_history, key=lambda t: t[2])
-    
+    rest_overlaps = np.array(rest_overlaps) 
     stats = np.array(stats)
     if len(rest_overlaps) == np.sum(rest_overlaps < 0.03):
         best_runs_ids = np.arange(len(rest_overlaps))
