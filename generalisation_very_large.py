@@ -395,7 +395,7 @@ def load_dataset_K(dataset_name):
     print('loading of everything took = ', time.time() - t, flush = True)
     return basis, psi, phi, fullbasis_states, repr_ix, repr
 
-def generate_datesets_K(basis, psi, phi, fullbasis_states, repr_ix, repr, rt_train, rt_test, rt_rest):
+def generate_datasets_K(basis, psi, phi, fullbasis_states, repr_ix, repr, rt_train, rt_test, rt_rest):
     def sample(basis, repr, repr_ix, psi, n):
         repr_sampled = basis.states[np.random.choice(len(psi), p=psi**2, size=n)]
         res = np.zeros(n, dtype = np.int64); i = 0
