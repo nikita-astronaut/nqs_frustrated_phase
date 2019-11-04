@@ -398,14 +398,16 @@ def load_dataset_K(dataset_name):
 
 def generate_datasets_K(basis, psi, phi, fullbasis_states, repr_ix, repr, rt_train, rt_test, rt_rest):
     def sample(basis, repr, repr_ix, psi, n):
-        repr_sampled = basis.states[np.random.choice(len(psi), p=psi**2, size=n, replace=False)]
+        repr_sampled = basis.states[np.random.choice(len(psi), p=psi**2, size=n)]
         res = np.zeros(n, dtype = np.int64); i = 0
         for i, r in enumerate(repr_sampled):
             res[i] = repr_ix[np.random.randint(np.searchsorted(repr, r, 'left'), np.searchsorted(repr, r, 'right'))]
+        print(len(np.unique(res)) * 1. / len(res))
         return res
 
     t = time.time()
     res = sample(basis, repr, repr_ix, psi, int(len(phi) * (rt_train + rt_test + rt_rest)))
+    print('sampled ' + str(len(res)) + ' configurations, with ratio = ' + str(len(np.unique(np.array(res))) * 1.0 / len(res)))
     spins = fullbasis_states[res]
     amplitudes = torch.from_numpy(phi[res])
     print('sampling took = ', time.time() - t, flush = True)
@@ -433,7 +435,7 @@ def generate_datasets_K(basis, psi, phi, fullbasis_states, repr_ix, repr, rt_tra
         torch.where(amplitudes[int((rt_train + rt_rest) * len(phi)):] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
         (torch.abs(amplitudes[int((rt_train + rt_rest) * len(phi)):]) ** 2).unsqueeze(1)[:, 0].type(torch.FloatTensor),
     )
-
+    
     print('to torch format took = ', time.time() - t, flush = True)
     print('Training on ' + str(len(dataset_train[0])) + ' configurations')
     print('Testing during training on ' + str(len(dataset_test[0])) + ' configurations')
@@ -539,7 +541,7 @@ def try_one_dataset(dataset_decomposed, output, Net, number_runs, number_best, t
     rest_overlaps = []
     for i in range(number_runs):
         module = Net(number_spins)
-        rest_part = np.min(np.array([rt * 100000, 1. - rt - train_options["test_fraction"]]))
+        rest_part = np.min(np.array([rt * 1000, 1. - rt - train_options["test_fraction"]]))
         rest_set, train_set, test_set = generate_datasets_K(*dataset_decomposed, rt, train_options["test_fraction"], rest_part) 
         print("splitted DS", flush = True)
         module, train_history, test_history = train(
