@@ -535,7 +535,8 @@ def try_one_dataset(dataset_decomposed, output, Net, number_runs, number_best, t
     rest_overlaps = []
     for i in range(number_runs):
         module = Net(number_spins)
-        rest_set, train_set, test_set = generate_datasets_K(*dataset_decomposed, rt, train_options["test_fraction"], rt * 10) 
+        rest_part = np.min(np.array([rt * 1000, 1. - rt - train_options["test_fraction"]]))
+        rest_set, train_set, test_set = generate_datasets_K(*dataset_decomposed, rt, train_options["test_fraction"], rest_part) 
         print("splitted DS", flush = True)
         module, train_history, test_history = train(
             module, train_set, test_set, gpu, lr, **train_options
@@ -586,7 +587,11 @@ def try_one_dataset(dataset_decomposed, output, Net, number_runs, number_best, t
         os.makedirs(folder, exist_ok=True)
         print("test_acc = {:.10e}, train_acc = {:.10e}, rest_acc = {:.10e}, resampled_acc = {:.10e}".format(best[3], best_train[3], rest_accuracy, resampled_acc))
         print("test_loss = {:.10e}, train_loss = {:.10e}, rest_loss = {:.10e}, resampled_loss = {:.10e}".format(best[2], best_train[2], rest_loss, resampled_loss))
-        # torch.save(module.state_dict(), os.path.join(folder, "state_dict.pickle"))
+
+
+        state_filename = folder + 'state_weights'
+        # torch.save(module.state_dict(), state_filename)
+        torch.save(module.state_dict(), os.path.join(folder, "state_dict.pickle"))
         # np.savetxt(os.path.join(folder, "train_history.dat"), np.array(train_history))
         # np.savetxt(os.path.join(folder, "test_history.dat"), np.array(test_history))
 
@@ -671,7 +676,7 @@ def main():
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
-                        ("{:.3f} {:.5f}" + " {:.10e}" * 22 + "\n").format(j2, rt, *tuple(local_result))
+                        ("{:.3f} {:.12f}" + " {:.10e}" * 22 + "\n").format(j2, rt, *tuple(local_result))
                 )
                 results_file.flush()
     return
