@@ -98,7 +98,8 @@ def split_dataset(dataset, fractions, sampling='uniform'):
         indices = torch.randperm(n)
     else:
         #indices = torch.multinomial(weights[:int(len(weights) * 0.01)], int(n * sum(fractions))).numpy()
-        indices = np.random.choice(np.arange(int(n / 100.)), size = int(n * sum(fractions)), replace=False, p=weights[:int(len(weights) / 100.)] / np.sum(weights[:int(len(weights) / 100.)]))
+        #indices = np.random.choice(np.arange(int(n / 100.)), size = int(n * sum(fractions)), replace=False, p=weights[:int(len(weights) / 100.)] / np.sum(weights[:int(len(weights) / 100.)]))
+        indices = np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=False, p=weights)
         print('indices selection took = ', time.time() - t, flush = True)
         t = time.time()
         # indices = np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=False, p=weights)
@@ -397,7 +398,7 @@ def load_dataset_K(dataset_name):
 
 def generate_datasets_K(basis, psi, phi, fullbasis_states, repr_ix, repr, rt_train, rt_test, rt_rest):
     def sample(basis, repr, repr_ix, psi, n):
-        repr_sampled = basis.states[np.random.choice(len(psi), p=psi**2, size=n)]
+        repr_sampled = basis.states[np.random.choice(len(psi), p=psi**2, size=n, replace=False)]
         res = np.zeros(n, dtype = np.int64); i = 0
         for i, r in enumerate(repr_sampled):
             res[i] = repr_ix[np.random.randint(np.searchsorted(repr, r, 'left'), np.searchsorted(repr, r, 'right'))]
@@ -434,6 +435,9 @@ def generate_datasets_K(basis, psi, phi, fullbasis_states, repr_ix, repr, rt_tra
     )
 
     print('to torch format took = ', time.time() - t, flush = True)
+    print('Training on ' + str(len(dataset_train[0])) + ' configurations')
+    print('Testing during training on ' + str(len(dataset_test[0])) + ' configurations')
+    print('Validating on ' + str(len(dataset_rest[0])) + ' configurations')
     t = time.time()
 
     return dataset_rest, dataset_train, dataset_test
@@ -535,7 +539,7 @@ def try_one_dataset(dataset_decomposed, output, Net, number_runs, number_best, t
     rest_overlaps = []
     for i in range(number_runs):
         module = Net(number_spins)
-        rest_part = np.min(np.array([rt * 1000, 1. - rt - train_options["test_fraction"]]))
+        rest_part = np.min(np.array([rt * 100000, 1. - rt - train_options["test_fraction"]]))
         rest_set, train_set, test_set = generate_datasets_K(*dataset_decomposed, rt, train_options["test_fraction"], rest_part) 
         print("splitted DS", flush = True)
         module, train_history, test_history = train(
