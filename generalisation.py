@@ -526,7 +526,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
     for i in range(number_runs):
         module = Net(number_spins)
         train_set, test_set, rest_set = split_dataset(
-            dataset, [rt, train_options["test_fraction"]], sampling = sampling
+            dataset, [rt, rt * 0.2], sampling = sampling
         )
         print("splitted DS", flush = True)
         module, train_history, test_history = train(
@@ -534,7 +534,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
         )
         print("finished training", flush = True)
         resampled_set, _, _ = split_dataset(
-            dataset, [rt, train_options["test_fraction"]], sampling = sampling
+            dataset, [rt, rt * 0.2], sampling = sampling
         )
 
         if gpu:
@@ -575,7 +575,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
         os.makedirs(folder, exist_ok=True)
         print("test_acc = {:.10e}, train_acc = {:.10e}, rest_acc = {:.10e}, resampled_acc = {:.10e}".format(best[3], best_train[3], rest_accuracy, resampled_acc))
         print("test_loss = {:.10e}, train_loss = {:.10e}, rest_loss = {:.10e}, resampled_loss = {:.10e}".format(best[2], best_train[2], rest_loss, resampled_loss))
-        # torch.save(module.state_dict(), os.path.join(folder, "state_dict.pickle"))
+        torch.save(module.state_dict(), os.path.join(folder, "state_dict.pickle"))
         # np.savetxt(os.path.join(folder, "train_history.dat"), np.array(train_history))
         # np.savetxt(os.path.join(folder, "test_history.dat"), np.array(test_history))
 
@@ -588,10 +588,14 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
     )
     '''
     best_expression = min(train_history, key=lambda t: t[2])
-    
-    stats = np.array(stats)
-    best_runs_ids = np.argsort(-np.array(rest_overlaps))[:number_best]
-    stats = stats[best_runs_ids, ...]
+    rest_overlaps = np.array(rest_overlaps) 
+    # stats = np.array(stats)
+    # if len(rest_overlaps) == np.sum(rest_overlaps < 0.03):
+    #     best_runs_ids = np.arange(len(rest_overlaps))
+    # else:
+    #     best_runs_ids = np.where(rest_overlaps > 0.03)[0]
+    # best_runs_ids = np.argsort(-np.array(rest_overlaps))[:number_best]
+    #stats = stats[best_runs_ids, ...]
     np.savetxt(os.path.join(output, "loss.dat"), stats)
     return np.concatenate([np.vstack((np.mean(stats, axis=0), np.std(stats, axis=0))).T.reshape(-1), np.array([*best_expression[2:]])], axis = 0)
 
