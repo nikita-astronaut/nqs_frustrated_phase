@@ -456,13 +456,13 @@ def accuracy(predicted, expected, weight, apply_weights_loss = False):
     agreement = predicted == expected
     return torch.sum(agreement.type(torch.FloatTensor) * torch.tensor(weight, dtype = torch.float32)).item()  # / float(expected.size(0))
  
-def overlap(train_type, ψ, samples, target, weights, gpu):
+def overlap(train_type, ψ, samples, target, weights, gpu, apply_weights = True):
     if train_type == 'phase':
-        return overlap_phase(ψ, samples, target, weights, gpu)
+        return overlap_phase(ψ, samples, target, weights, gpu, apply_weights)
     else:
-        return overlap_amplitude(ψ, samples, target, weights, gpu)
+        return overlap_amplitude(ψ, samples, target, weights, gpu, apply_weights)
 
-def overlap_amplitude(ψ, samples, target, weights, gpu):
+def overlap_amplitude(ψ, samples, target, weights, gpu, apply_weights = True):
     predicted_amplitudes = predict_large_data(ψ, samples, gpu, "amplitude")
     overlap = torch.sum(torch.sqrt(predicted_amplitudes.type(torch.FloatTensor)) * torch.sqrt(weights)).item()
     norm_bra = torch.sum(predicted_amplitudes.type(torch.FloatTensor)).item()
@@ -470,10 +470,15 @@ def overlap_amplitude(ψ, samples, target, weights, gpu):
 
     return overlap / np.sqrt(norm_bra) / np.sqrt(norm_ket)
 
-def overlap_phase(ψ, samples, target, weights, gpu):
+def overlap_phase(ψ, samples, target, weights, gpu, apply_weights = True):
     predicted_signs = 2.0 * torch.max(predict_large_data(ψ, samples, gpu, "phase"), dim=1)[1] - 1.0
     print(predicted_signs.size(), flush = True)
     target_signs = 2.0 * target - 1.0
+
+    if not apply_weights:
+        overlap = torch.sum(predicted_signs.type(torch.FloatTensor) * target_signs.type(torch.FloatTensor)).item() / predicted_signs.size()[0]
+        return np.abs(overlap)
+    
     overlap = torch.sum(predicted_signs.type(torch.FloatTensor) * target_signs.type(torch.FloatTensor) * weights.type(torch.FloatTensor)).item()
     # del predicted_signs
     return np.abs(overlap / torch.sum(weights).item())
@@ -570,7 +575,7 @@ def try_one_dataset(dataset_decomposed, output, Net, number_runs, train_options,
             rest_set = (rest_set[0], rest_set[1], rest_set[2] * 0.0 + 1.0 / rest_set[2].size()[0])
         
         with torch.no_grad():
-            #predicted_rest = predict_large_data(module, rest_set[0], gpu, train_options["type"])
+            predicted_rest = predict_large_data(module, rest_set[0], gpu, train_options["type"])
 
             print(rest_set[0].size(), rest_set[1].size(), rest_set[2].size())
             predicted_resampled = 0#predict_large_data(module, resampled_set[0], gpu, train_options["type"])
@@ -580,7 +585,8 @@ def try_one_dataset(dataset_decomposed, output, Net, number_runs, train_options,
             resampled_loss = 0#loss_fn(predicted_resampled, resampled_set[1], resampled_set[2]).item()
             resampled_acc = 0#accuracy(predicted_resampled, resampled_set[1], resampled_set[2])
         
-            best_overlap = overlap(train_options["type"], module, *rest_set, gpu)
+            best_overlap = overlap(train_options["type"], module, *rest_set, gpu, apply_weights = False)
+            # best_overlap = accuracy(predicted_rest, rest_set[1], None, apply_weights_loss = False)
             print('total dataset overlap = ' + str(best_overlap) + ', rest dataset accuracy = ' + str(rest_accuracy))
             print('resampled loss =  = ' + str(resampled_loss) + ', resampled dataset accuracy = ' + str(resampled_acc))
 
