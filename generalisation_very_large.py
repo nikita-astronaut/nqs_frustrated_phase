@@ -501,7 +501,7 @@ def load_dataset_large(dataset_name):
     return dataset
 
 
-def try_one_dataset(dataset_decomposed, output, Net, number_runs, number_best, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
+def try_one_dataset(dataset_decomposed, output, Net, number_runs, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
     global number_spins
     #
     # dataset_total, dataset_train, dataset_test = load_dataset_K(dataset_name, rt, train_options["test_fraction"])  # K way
@@ -644,7 +644,6 @@ def main():
     output = config["output"]
     number_spins = get_number_spins(config)
     number_runs = config["number_runs"]
-    number_best = config["number_best"]
     gpu = config["gpu"]
     sampling = config["sampling"]
     lrs = config.get("lr")
@@ -687,7 +686,7 @@ def main():
             os.makedirs(local_output, exist_ok=True)
             print(j2)
             local_result = try_one_dataset(
-                dataset_decomposed, local_output, Net, number_runs, number_best, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
+                dataset_decomposed, local_output, Net, number_runs, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
