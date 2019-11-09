@@ -251,7 +251,7 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
                 update_count += 1
                 with torch.no_grad():
                     accuracy = accuracy_fn(predicted, batch_y, batch_weight)
-                del predicted
+                # del predicted
                 train_loss_history.append(
                     (update_count, epoch_index, loss.item(), accuracy)
                 )
@@ -264,7 +264,7 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
                         loss = loss_fn(predicted, test_y, test_weight).item()
                         accuracy = accuracy_fn(predicted, test_y, test_weight)
                         print('test loss = {:.3e}, test accuracy = {:.3e}'.format(loss, accuracy))
-                        del predicted
+                        # del predicted
                     early_stopping(loss, ψ)
                     test_loss_history.append(
                         (update_count, epoch_index, loss, accuracy)
@@ -297,7 +297,7 @@ def train(ψ, train_set, test_set, gpu, lr, **config):
                         torch.max(accuracies).item(),
                     )
                 )
-        del dataloader
+        # del dataloader
         return False
 
     stopped_early = training_loop()
@@ -475,7 +475,7 @@ def overlap_phase(ψ, samples, target, weights, gpu):
     print(predicted_signs.size(), flush = True)
     target_signs = 2.0 * target - 1.0
     overlap = torch.sum(predicted_signs.type(torch.FloatTensor) * target_signs.type(torch.FloatTensor) * weights.type(torch.FloatTensor)).item()
-    del predicted_signs
+    # del predicted_signs
     return np.abs(overlap / torch.sum(weights).item())
 
 def load_dataset_large(dataset_name):
@@ -547,6 +547,8 @@ def try_one_dataset(dataset_decomposed, output, Net, number_runs, number_best, t
     for i in range(number_runs):
         module = Net(number_spins)
         rest_part = 0.005
+      
+        print("sampling for next attempt ...", flush = True)
         rest_set, train_set, test_set = generate_datasets_K(*dataset_decomposed, rt, rt * 0.2, rest_part) 
         print("splitted DS", flush = True)
         module, train_history, test_history = train(
@@ -605,9 +607,9 @@ def try_one_dataset(dataset_decomposed, output, Net, number_runs, number_best, t
         torch.save(module.state_dict(), os.path.join(folder, "state_dict.pickle"))
         # np.savetxt(os.path.join(folder, "train_history.dat"), np.array(train_history))
         # np.savetxt(os.path.join(folder, "test_history.dat"), np.array(test_history))
-        del rest_set
-        del train_set
-        del test_set
+        # del rest_set
+        # del train_set
+        # del test_set
     #  Andrey asked to check the total expressibility of the model and also plot it
     '''
     module = Net(dataset[0].size(1))
@@ -624,8 +626,8 @@ def try_one_dataset(dataset_decomposed, output, Net, number_runs, number_best, t
     # else:
     #     best_runs_ids = np.where(rest_overlaps > 0.03)[0]
 
-    best_runs_ids = np.argsort(-np.array(rest_overlaps))[:number_best]
-    stats = stats[best_runs_ids, ...]
+    # best_runs_ids = np.argsort(-np.array(rest_overlaps))[:number_best]
+    # stats = stats[best_runs_ids, ...]
     np.savetxt(os.path.join(output, "loss.dat"), stats)
     return np.concatenate([np.vstack((np.mean(stats, axis=0), np.std(stats, axis=0))).T.reshape(-1), np.array([*best_expression[2:]])], axis = 0)
 
