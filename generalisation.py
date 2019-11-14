@@ -500,7 +500,12 @@ def load_dataset_large(dataset_name):
     ).astype(np.int64)
 
     all_amplitudes = torch.from_numpy(load_eigenvector(dataset_name))
-
+    print('norm = ', torch.sum(all_amplitudes ** 2).item())
+    ipr = int(torch.sum(all_amplitudes ** 2).item() ** 2 / torch.sum(all_amplitudes ** 4).item())
+    print('IPR = ', str(ipr))
+    sort_ampls = np.sort(all_amplitudes)[-ipr:]
+    print('1/IPR states contains weigth: ', np.sum(sort_ampls ** 2))
+    # return -1
     dataset = (
         torch.from_numpy(all_spins),
         torch.where(all_amplitudes >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
@@ -524,7 +529,6 @@ def load_dataset_TOM(dataset):
         (torch.abs(dataset[1]) ** 2).squeeze(),
     )
     return dataset
-
 
 def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
     global number_spins
@@ -700,6 +704,7 @@ def main():
             local_result = try_one_dataset(
                 dataset, local_output, Net, number_runs, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
             )
+            # continue   ### DEBUG ###
             with open(results_filename, "a") as results_file:
                 results_file.write(
                         ("{:.3f} {:.7f}" + " {:.10e}" * 22 + "\n").format(j2, rt, *tuple(local_result))
