@@ -606,8 +606,10 @@ def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02,
                 dataset = (dataset[0].cpu(), dataset[1], dataset[2])
         best = min(test_history, key=lambda t: t[2])
         best_train = min(train_history, key=lambda t: t[2])
-        stats.append((*best[2:], *best_train[2:], rest_loss, rest_accuracy, resampled_loss, resampled_acc, best_overlap, rest_overlap))
-
+        train_unique = torch.sum(torch.unique(train_set[2])).item()
+        train_nonunique = torch.sum(train_set[2]).item()
+        stats.append((*best[2:], *best_train[2:], rest_loss, rest_accuracy, resampled_loss, resampled_acc, best_overlap, rest_overlap, train_unique, train_nonunique))
+        print("train_unique = {:.10e}, train_nonunique = {:.10e}".format(train_unique, train_nonunique))
         folder = os.path.join(output, str(i + 1))
         os.makedirs(folder, exist_ok=True)
         print("test_acc = {:.10e}, train_acc = {:.10e}, rest_acc = {:.10e}, resampled_acc = {:.10e}".format(best[3], best_train[3], rest_accuracy, resampled_acc))
@@ -686,7 +688,7 @@ def main():
             "<rest_accuracy> <rest_accuracy_err> "
             "<resampled_loss> <resampled_loss_err> "
             "<resampled_accuracy> <resampled_accuracy_err>"
-            " <total_overlap> <total_overlap_err> <rest_overlap> <rest_overlap_err> <total_expr> <total_acc> \n")
+            " <total_overlap> <total_overlap_err> <rest_overlap> <rest_overlap_err> <tr_unique> <tr_unique_err> <tr_nonunique> <tr_nonunique_err> <total_expr> <total_acc> \n")
     results_file.flush()
 
     
@@ -707,7 +709,7 @@ def main():
             # continue   ### DEBUG ###
             with open(results_filename, "a") as results_file:
                 results_file.write(
-                        ("{:.3f} {:.7f}" + " {:.10e}" * 22 + "\n").format(j2, rt, *tuple(local_result))
+                        ("{:.3f} {:.7f}" + " {:.10e}" * 26 + "\n").format(j2, rt, *tuple(local_result))
                 )
                 results_file.flush()
     return
