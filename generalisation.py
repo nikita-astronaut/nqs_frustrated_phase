@@ -26,8 +26,8 @@ from scipy.special import comb
 from itertools import combinations
 from nqs_frustrated_phase.hphi import load_eigenvector
 from nqs_frustrated_phase._core import sector
-import quspin
-from quspin import basis
+# import quspin
+# from quspin import basis
 number_spins = None
 
 def index_to_spin(index):
@@ -101,7 +101,7 @@ def split_dataset(dataset, fractions, sampling='uniform'):
         #indices = np.random.choice(np.arange(int(n / 100.)), size = int(n * sum(fractions)), replace=False, p=weights[:int(len(weights) / 100.)] / np.sum(weights[:int(len(weights) / 100.)]))
         # print('indices selection took = ', time.time() - t, flush = True)
         #t = time.time()
-        indices = np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=False, p=weights)
+        indices = np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=True, p=weights)
         indices = torch.from_numpy(np.concatenate([indices, np.setdiff1d(np.arange(n), indices)], axis = 0))
 
     print('indexes concatenation took = ', time.time() - t, flush = True)
@@ -469,7 +469,12 @@ def load_dataset_large(dataset_name):
     ).astype(np.int64)
 
     all_amplitudes = torch.from_numpy(load_eigenvector(dataset_name))
-
+    print('norm = ', torch.sum(all_amplitudes ** 2).item())
+    ipr = int(torch.sum(all_amplitudes ** 2).item() ** 2 / torch.sum(all_amplitudes ** 4).item())
+    print('IPR = ', str(ipr))
+    sort_ampls = np.sort(all_amplitudes)[-ipr:]
+    print('1/IPR states contains weigth: ', np.sum(sort_ampls ** 2))
+    # return -1
     dataset = (
         torch.from_numpy(all_spins),
         torch.where(all_amplitudes >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
@@ -487,7 +492,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
 
     # print("loaded dateset", flush = True)
     dataset = load_dataset_large(dataset_name)  # HPHI way
-
+    # return -1 ### DEBUG ###
     # dataset_hphi = load_dataset_large(dataset_name[0])
 
     # print(dataset_K[1].shape, dataset_K[2].shape, dataset_hphi[1].shape, dataset_hphi[2].shape)
@@ -654,6 +659,7 @@ def main():
             local_result = try_one_dataset(
                 dataset_name, local_output, Net, number_runs, number_best, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
             )
+            # continue   ### DEBUG ###
             with open(results_filename, "a") as results_file:
                 results_file.write(
                         ("{:.3f} {:.5f}" + " {:.10e}" * 22 + "\n").format(j2, rt, *tuple(local_result))
