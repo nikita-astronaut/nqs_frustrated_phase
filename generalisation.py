@@ -26,12 +26,27 @@ from scipy.special import comb
 from itertools import combinations
 from nqs_frustrated_phase.hphi import load_eigenvector
 from nqs_frustrated_phase._core import sector
-import quspin
-from quspin import basis
+# import quspin
+# from quspin import basis
 number_spins = None
+
+def get_info(system_folder, j2=None, rt=None):
+    if not os.path.exists(os.path.join(system_folder, "info.json")):
+        raise ValueError(
+            "Could not find {!r} in the system directory {!r}".format(
+                "info.json", system_folder
+            )
+        )
+    with open(os.path.join(system_folder, "info.json"), "r") as input:
+        info = json.load(input)
+    if j2 is not None:
+        info = [x for x in info if x["j2"] in j2]
+    return info
 
 def index_to_spin(index):
     global number_spins
+    if number_spins == 24:
+        return index
     """
     Generates spins out of indexes given the total spin number
     P.S. Can be slow, but intuitive (I believe that the bottleneck is not here)
@@ -101,7 +116,7 @@ def split_dataset(dataset, fractions, sampling='uniform'):
         #indices = np.random.choice(np.arange(int(n / 100.)), size = int(n * sum(fractions)), replace=False, p=weights[:int(len(weights) / 100.)] / np.sum(weights[:int(len(weights) / 100.)]))
         # print('indices selection took = ', time.time() - t, flush = True)
         #t = time.time()
-        indices = np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=False, p=weights)
+        indices = np.random.choice(np.arange(n), size = int(n * sum(fractions)), replace=True, p=weights)
         indices = torch.from_numpy(np.concatenate([indices, np.setdiff1d(np.arange(n), indices)], axis = 0))
 
     print('indexes concatenation took = ', time.time() - t, flush = True)
@@ -112,6 +127,7 @@ def split_dataset(dataset, fractions, sampling='uniform'):
         sets.append(tuple(x[indices[first:last]] for x in dataset))
     print('sets creation took = ', time.time() - t, flush = True)
     t = time.time()
+    print(sets[0][0].size(), sets[1][0].size(), sets[2][0].size())
     return sets
 
 
@@ -362,6 +378,21 @@ def get_number_spins(config):
         )
     return int(match.group(2))
 
+def load_dataset_Tom(dataset):
+    # Load the dataset using pickle
+    dataset = tuple(
+        torch.from_numpy(x) for x in _with_file_like(dataset, "rb", pickle.load)
+    )
+    
+    # Pre-processing
+    dataset = (
+        dataset[0],
+        torch.where(dataset[1] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
+        torch.abs(dataset[1]) ** 2,
+    )
+    print(dataset[0].size(), dataset[1].size(), dataset[2].size())
+    return dataset
+
 def load_dataset_K(dataset_name):
     global number_spins
     t = time.time()
@@ -479,22 +510,24 @@ def load_dataset_large(dataset_name):
 
     return dataset
 
+def load_dataset_TOM(dataset):
+    # Load the dataset using pickle
+    # it is expected that dataset[0] is the array of integers (n < 2 ** 30)! (not of spin configurations)
+    dataset = tuple(
+        torch.from_numpy(x) for x in _with_file_like(dataset, "rb", pickle.load)
+    )
+    
+    # Pre-processing
+    dataset = (
+        dataset[0],
+        torch.where(dataset[1] >= 0, torch.tensor([0]), torch.tensor([1])).squeeze(),
+        (torch.abs(dataset[1]) ** 2).squeeze(),
+    )
+    return dataset
 
-def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
+
+def try_one_dataset(dataset, output, Net, number_runs, train_options, rt = 0.02, lr = 0.0003, gpu = False, sampling = "uniform"):
     global number_spins
-    #
-    # dataset = load_dataset_K(dataset_name)  # K way
-
-    # print("loaded dateset", flush = True)
-    dataset = load_dataset_large(dataset_name)  # HPHI way
-
-    # dataset_hphi = load_dataset_large(dataset_name[0])
-
-    # print(dataset_K[1].shape, dataset_K[2].shape, dataset_hphi[1].shape, dataset_hphi[2].shape)
-
-    # overlap = torch.sum(torch.sqrt(dataset_K[2]) * torch.sqrt(dataset_hphi[2]) * (2. * dataset_K[1] - 1) * (2. * dataset_hphi[1] - 1) / torch.sqrt(torch.sum(dataset_K[2])) / torch.sqrt(torch.sum(dataset_hphi[2])))
-    # print('overlap = ' + str(overlap))
-    # exit(-1)
     weights = None
 
     class Loss(object):
@@ -526,7 +559,7 @@ def try_one_dataset(dataset_name, output, Net, number_runs, number_best, train_o
     for i in range(number_runs):
         module = Net(number_spins)
         train_set, test_set, rest_set = split_dataset(
-            dataset, [rt, rt * 0.2], sampling = sampling
+            dataset, [rt, rt * 0.1], sampling = sampling
         )
         print("splitted DS", flush = True)
         module, train_history, test_history = train(
@@ -612,12 +645,20 @@ def main():
     output = config["output"]
     number_spins = get_number_spins(config)
     number_runs = config["number_runs"]
-    number_best = config["number_best"]
     gpu = config["gpu"]
     sampling = config["sampling"]
     lrs = config.get("lr")
-    j2_list = config.get("j2")
+    if number_spins != 24:
+        j2_list = config.get("j2")
+        j2_iter = j2_list
+    else:
+        system_folder = config["system"]
+        info = get_info(system_folder, config.get("j2"))
+        j2_iter = info
     Net = import_network(config["model"])
+    
+    
+
     if config["use_jit"]:
         _dummy_copy_of_Net = Net
         Net = lambda n: torch.jit.trace(
@@ -644,19 +685,24 @@ def main():
             " <total_overlap> <total_overlap_err> <rest_overlap> <rest_overlap_err> <total_expr> <total_acc> \n")
     results_file.flush()
 
-    for j2, lr in zip(j2_list, lrs):
+    
+    for j2_i, lr in zip(j2_iter, lrs):
         for rt in config.get("train_fractions"):
-            dataset_name = os.path.join(config['system'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat')  # HPHI way
-            # dataset_name = config['system_K']  # K way
+            if number_spins == 24:
+                j2 = j2_i["j2"]
+                dataset = load_dataset_TOM(j2_i["dataset"])
+            else:
+                j2 = j2_i
+                dataset = load_dataset_large(os.path.join(config['system'] + '/' + str(j2) + '/output/zvo_eigenvec_0_rank_0.dat'))
+
             local_output = os.path.join(output, "j2={}rt={}".format(j2, rt))
             os.makedirs(local_output, exist_ok=True)
-            print(j2)
             local_result = try_one_dataset(
-                dataset_name, local_output, Net, number_runs, number_best, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
+                dataset, local_output, Net, number_runs, config["training"], rt = rt, lr = lr, gpu = gpu, sampling = sampling
             )
             with open(results_filename, "a") as results_file:
                 results_file.write(
-                        ("{:.3f} {:.5f}" + " {:.10e}" * 22 + "\n").format(j2, rt, *tuple(local_result))
+                        ("{:.3f} {:.7f}" + " {:.10e}" * 22 + "\n").format(j2, rt, *tuple(local_result))
                 )
                 results_file.flush()
     return
