@@ -477,11 +477,11 @@ def overlap_phase(ψ, samples, target, weights, gpu, apply_weights = True):
 
     if not apply_weights:
         overlap = torch.sum(predicted_signs.type(torch.FloatTensor) * target_signs.type(torch.FloatTensor)).item() / predicted_signs.size()[0]
-        return np.abs(overlap)
+        return overlap
     
     overlap = torch.sum(predicted_signs.type(torch.FloatTensor) * target_signs.type(torch.FloatTensor) * weights.type(torch.FloatTensor)).item()
     # del predicted_signs
-    return np.abs(overlap / torch.sum(weights).item())
+    return overlap / torch.sum(weights).item()
 
 def load_dataset_large(dataset_name):
     global number_spins
