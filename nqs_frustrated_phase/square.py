@@ -85,11 +85,16 @@ def make_j1j2_graph(L_x, L_y):
 
 
 class Square24(System):
-    POSITIONS = [(i, j) for i in range(6) for j in range(4)]
-    J1_EDGES, J2_EDGES = make_j1j2_graph(6, 4)
+    POSITIONS = [(i, j) for i in range(4) for j in range(6)]
+    J1_EDGES, J2_EDGES = make_j1j2_graph(4, 6)
+    print(J1_EDGES)
+    print(J2_EDGES)
 class Square30(System):
     POSITIONS = [(i, j) for i in range(6) for j in range(5)]
     J1_EDGES, J2_EDGES = make_j1j2_graph(6, 5)
 class Square36(System):
     POSITIONS = [(i, j) for i in range(6) for j in range(6)]
     J1_EDGES, J2_EDGES = make_j1j2_graph(6, 6)
+class Square32(System):
+    POSITIONS = [(i, j) for i in range(4) for j in range(8)]
+    J1_EDGES, J2_EDGES = make_j1j2_graph(4, 8)

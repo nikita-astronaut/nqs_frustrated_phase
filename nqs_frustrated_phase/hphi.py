@@ -94,7 +94,7 @@ def write_modpara(n: int, output: str):
         )
 
 
-def write_settings(cls, j2: float, calc_type: str = "cg", workdir: str = "workdir"):
+def write_settings(cls, j1: float, j2: float, calc_type: str = "cg", workdir: str = "workdir"):
     if not os.path.exists(workdir):
         os.makedirs(workdir)
 
@@ -107,7 +107,7 @@ def write_settings(cls, j2: float, calc_type: str = "cg", workdir: str = "workdi
     write_modpara(n, output=os.path.join(workdir, modpara))
     write_locspin(n, output=os.path.join(workdir, locspin))
     write_interall(
-        [(4.0, cls.J1_EDGES), (4.0 * j2, cls.J2_EDGES)],
+        [(4.0 * j1, cls.J1_EDGES), (4.0 * j2, cls.J2_EDGES)],
         output=os.path.join(workdir, interall),
     )
     with open(os.path.join(workdir, "namelist.def"), "w") as output:
